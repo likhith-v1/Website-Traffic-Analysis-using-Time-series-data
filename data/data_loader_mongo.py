@@ -1,49 +1,55 @@
-"""Load and prepare Wikipedia traffic data for time series analysis.
+"""Load and prepare Wikipedia traffic data with Polars.
 
-Includes MongoDB loaders plus a simple CSV fallback.
+This module includes MongoDB loaders and small preprocessing helpers.
 """
 
-import pandas as pd
-import numpy as np
+import polars as pl
 from pymongo import MongoClient
-from pathlib import Path
 
 MONGO_URI = "mongodb://localhost:27017/"
 DB_NAME   = "wikipedia_traffic"
 COL_NAME  = "pageviews"
 
 
-# MongoDB loaders
+# MongoDB connection
 
 def get_collection():
     client = MongoClient(MONGO_URI)
     return client[DB_NAME][COL_NAME]
 
 
-def load_article(article: str, project: str = "en.wikipedia.org",
-                 access: str = "all-access", agent: str = "all-agents") -> pd.DataFrame:
-    """Return daily views for one article as a date-indexed DataFrame."""
+# Data loaders
+
+def load_article(article: str,
+                 project: str = "en.wikipedia.org",
+                 access:  str = "all-access",
+                 agent:   str = "all-agents") -> pl.DataFrame:
+    """Return daily views for one article, sorted by date."""
     col = get_collection()
-    query = {"article": article, "project": project, "access": access, "agent": agent}
-    docs = list(col.find(query, {"_id": 0, "date": 1, "views": 1}).sort("date", 1))
+    docs = list(col.find(
+        {"article": article, "project": project, "access": access, "agent": agent},
+        {"_id": 0, "date": 1, "views": 1}
+    ).sort("date", 1))
 
     if not docs:
-        raise ValueError(f"No data found for article='{article}', project='{project}'")
+        raise ValueError(f"No data for article='{article}', project='{project}'")
 
-    df = pd.DataFrame(docs)
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.set_index("date").sort_index()
-    df.index.freq = pd.infer_freq(df.index)
+    df = (
+        pl.DataFrame(docs)
+        .with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+        .sort("date")
+    )
     print(f"Loaded {len(df)} daily records for '{article}' [{project}]")
     return df
 
 
 def load_aggregated_daily(project: str = "en.wikipedia.org",
-                           access: str = "all-access",
-                           start: str = None, end: str = None) -> pd.DataFrame:
-    """Return per-day aggregates across all articles for a project/access pair."""
+                           access:  str = "all-access",
+                           start:   str = None,
+                           end:     str = None) -> pl.DataFrame:
+    """Return daily totals across all articles for one project/access pair."""
     col = get_collection()
-    match = {"project": project, "access": access}
+    match: dict = {"project": project, "access": access}
     if start or end:
         date_filter = {}
         if start: date_filter["$gte"] = start
@@ -53,25 +59,29 @@ def load_aggregated_daily(project: str = "en.wikipedia.org",
     pipeline = [
         {"$match": match},
         {"$group": {
-            "_id": "$date",
-            "total_views":  {"$sum": "$views"},
-            "page_count":   {"$sum": 1},
-            "avg_views":    {"$avg": "$views"},
-            "max_views":    {"$max": "$views"},
+            "_id":         "$date",
+            "total_views": {"$sum": "$views"},
+            "page_count":  {"$sum": 1},
+            "avg_views":   {"$avg": "$views"},
+            "max_views":   {"$max": "$views"},
         }},
         {"$sort": {"_id": 1}}
     ]
 
     docs = list(col.aggregate(pipeline, allowDiskUse=True))
-    df = pd.DataFrame(docs).rename(columns={"_id": "date"})
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.set_index("date").sort_index()
-    print(f"Loaded {len(df)} aggregated daily rows for project='{project}', access='{access}'")
+    df = (
+        pl.DataFrame(docs)
+        .rename({"_id": "date"})
+        .with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+        .sort("date")
+    )
+    print(f"Loaded {len(df)} aggregated daily rows [{project} / {access}]")
     return df
 
 
-def load_top_articles(n: int = 50, project: str = "en.wikipedia.org",
-                      access: str = "all-access") -> pd.DataFrame:
+def load_top_articles(n: int = 50,
+                      project: str = "en.wikipedia.org",
+                      access:  str = "all-access") -> pl.DataFrame:
     """Return top N articles ranked by total views."""
     col = get_collection()
     pipeline = [
@@ -80,61 +90,65 @@ def load_top_articles(n: int = 50, project: str = "en.wikipedia.org",
         {"$sort": {"total_views": -1}},
         {"$limit": n}
     ]
-    docs = list(col.aggregate(pipeline, allowDiskUse=True))
-    df = pd.DataFrame(docs).rename(columns={"_id": "article"})
-    print(f"Top {n} articles by views:")
-    print(df.head(10).to_string(index=False))
+    df = pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "article"})
+    print(f"Top {n} articles:\n{df.head(10)}")
     return df
 
 
-def load_by_project_breakdown(date: str = "2016-01-01") -> pd.DataFrame:
-    """Views breakdown by project for a specific date."""
+def load_by_project_breakdown(date: str = "2016-01-01") -> pl.DataFrame:
+    """Views by project for a specific date."""
     col = get_collection()
     pipeline = [
         {"$match": {"date": date}},
         {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
         {"$sort": {"total_views": -1}}
     ]
-    return pd.DataFrame(list(col.aggregate(pipeline))).rename(columns={"_id": "project"})
+    return pl.DataFrame(list(col.aggregate(pipeline))).rename({"_id": "project"})
 
 
-# CSV fallback
-
-def load_from_csv(filepath: str, article_filter: str = None) -> pd.DataFrame:
-    """Load the long-format CSV (output of transform_to_mongo.py)."""
-    df = pd.read_csv(filepath, parse_dates=["date"])
+def load_from_jsonl(filepath: str, article_filter: str = None) -> pl.DataFrame:
+    """Load JSONL directly with Polars, without using MongoDB."""
+    df = pl.read_ndjson(filepath)
+    df = df.with_columns(pl.col("date").str.to_date("%Y-%m-%d")).sort("date")
     if article_filter:
-        df = df[df["article"].str.contains(article_filter, case=False)]
-    df = df.sort_values("date").set_index("date")
+        df = df.filter(pl.col("article").str.contains(article_filter))
+    print(f"Loaded {len(df):,} rows from {filepath}")
     return df
 
 
 # Preprocessing helpers
 
-def fill_missing_dates(df: pd.DataFrame, freq: str = "D") -> pd.DataFrame:
-    """Reindex to fill any missing dates with 0."""
-    full_idx = pd.date_range(df.index.min(), df.index.max(), freq=freq)
-    df = df.reindex(full_idx, fill_value=0)
-    missing = (df == 0).sum()
-    print(f"Filled {missing.max()} missing dates with 0.")
+def fill_missing_dates(df: pl.DataFrame, date_col: str = "date",
+                       views_col: str = "views") -> pl.DataFrame:
+    """Fill missing dates in a single-article series with 0 views."""
+    full = pl.date_range(
+        df[date_col].min(), df[date_col].max(), interval="1d", eager=True
+    ).alias(date_col).to_frame()
+    df = full.join(df, on=date_col, how="left").with_columns(
+        pl.col(views_col).fill_null(0)
+    )
+    print(f"Filled missing dates → {len(df)} total rows")
     return df
 
 
-def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add common calendar features used in exploratory time series work."""
-    df = df.copy()
-    df["year"]        = df.index.year
-    df["month"]       = df.index.month
-    df["day_of_week"] = df.index.dayofweek
-    df["week"]        = df.index.isocalendar().week.astype(int)
-    df["quarter"]     = df.index.quarter
-    df["is_weekend"]  = (df.index.dayofweek >= 5).astype(int)
-    return df
+def add_time_features(df: pl.DataFrame, date_col: str = "date") -> pl.DataFrame:
+    """Add simple calendar features for analysis and modeling."""
+    return df.with_columns([
+        pl.col(date_col).dt.year().alias("year"),
+        pl.col(date_col).dt.month().alias("month"),
+        pl.col(date_col).dt.day().alias("day"),
+        pl.col(date_col).dt.weekday().alias("day_of_week"),
+        pl.col(date_col).dt.week().alias("week"),
+        pl.col(date_col).dt.quarter().alias("quarter"),
+        (pl.col(date_col).dt.weekday() >= 5).cast(pl.Int8).alias("is_weekend"),
+    ])
 
 
-def split_train_test(series: pd.Series, test_days: int = 60):
-    """Split a series into train and test windows by the last N days."""
-    train = series.iloc[:-test_days]
-    test  = series.iloc[-test_days:]
+def split_train_test(df: pl.DataFrame, views_col: str = "views",
+                     test_days: int = 60) -> tuple[pl.Series, pl.Series]:
+    """Split into train/test by last N rows."""
+    series = df[views_col]
+    train = series[:-test_days]
+    test  = series[-test_days:]
     print(f"Train: {len(train)} days | Test: {len(test)} days")
     return train, test

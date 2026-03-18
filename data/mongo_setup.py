@@ -1,7 +1,4 @@
-"""Post-import MongoDB setup for the traffic dataset.
-
-Creates practical indexes, prints collection stats, and runs a few sample queries.
-"""
+"""Set up MongoDB indexes and run quick checks after import."""
 
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.errors import OperationFailure
@@ -20,25 +17,25 @@ def main():
     print(f"Connected. Collection: {DB_NAME}.{COL_NAME}")
     print(f"Document count: {col.estimated_document_count():,}\n")
 
-    # Indexes
+    # Helpful indexes
     indexes = [
-        # Main lookup pattern: article over time
+        # Article + date lookups
         ([("article", ASCENDING), ("date", ASCENDING)], "article_date"),
 
-        # Project-level filtering
+        # Project filtering
         ([("project", ASCENDING), ("date", ASCENDING)], "project_date"),
 
-        # Access-level filtering
+        # Access filtering
         ([("access", ASCENDING), ("date", ASCENDING)], "access_date"),
 
-        # Time-based grouping
+        # Time grouping
         ([("year", ASCENDING), ("month", ASCENDING)], "year_month"),
         ([("date", ASCENDING)], "date"),
 
-        # Ranking by popularity
+        # Popularity ranking
         ([("views", DESCENDING)], "views_desc"),
 
-        # Broad dashboard filter + sort
+        # Common dashboard filter + sort
         ([("project", ASCENDING), ("access", ASCENDING),
           ("date", ASCENDING), ("views", DESCENDING)], "project_access_date_views"),
     ]
@@ -61,7 +58,7 @@ def main():
     # Sample queries
     print("\n── Sample Query Results ──")
 
-    # 1) Daily views for one article
+    # 1) One article over time
     print("\n1. Daily views for '2NE1' (en.wikipedia, desktop, 2016):")
     results = list(col.find(
         {"article": {"$regex": "2NE1"}, "project": "en.wikipedia.org",
@@ -79,7 +76,7 @@ def main():
     ]
     pprint.pprint(list(col.aggregate(pipeline)))
 
-    # 3) Daily totals across all pages
+    # 3) Daily totals across pages
     print("\n3. Total views per day (first 5 days):")
     pipeline = [
         {"$group": {"_id": "$date", "total_views": {"$sum": "$views"}}},
