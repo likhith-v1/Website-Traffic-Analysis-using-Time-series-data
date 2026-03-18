@@ -1,41 +1,68 @@
-# Website Traffic Analysis Using Time Series Data
+# Wikipedia Traffic Analysis Using Time Series Data
 
-This project turns Wikipedia pageview data into a small analytics stack:
+This project is a small full-stack data analysis app built around Wikipedia pageview data.
 
-- a MongoDB-backed data store
-- a Python analysis and forecasting pipeline
-- a FastAPI backend
-- a React dashboard
+It takes raw traffic data, stores it in MongoDB, analyzes it with Python, generates forecasts, and shows everything in a dashboard where you can explore trends, compare models, and inspect the dataset more comfortably.
+
+## What this project does
+
+- loads Wikipedia traffic data into MongoDB
+- analyzes daily pageview trends
+- builds forecasts using multiple time-series models
+- compares model performance with metrics like MAE, RMSE, MAPE, SMAPE, WAPE, R2, and Bias
+- serves the data through a FastAPI backend
+- shows the results in a React dashboard
+
+## Tech stack
+
+- Python for analysis and forecasting
+- MongoDB for storage
+- FastAPI for the backend API
+- React + Vite for the frontend
 
 ## Project structure
 
-- `main.py`: runs analysis and forecasting from the project root
-- `src/analysis.py`: generates time-series diagnostics and plot artifacts
-- `src/forecasting.py`: trains forecasting models and writes dashboard JSON
-- `backend/main.py`: FastAPI app used by the React frontend
-- `data/transform_to_mongo.py`: converts wide CSV pageview data to long JSONL
-- `data/mongo_setup.py`: creates indexes and runs sample MongoDB checks
-- `data/data_loader_mongo.py`: shared MongoDB and preprocessing helpers
-- `frontend/`: Vite + React dashboard
+```text
+.
+├── main.py                    # Runs the full analysis + forecasting pipeline
+├── src/
+│   ├── analysis.py            # Time-series analysis and plots
+│   └── forecasting.py         # Forecasting models and metrics
+├── backend/
+│   └── main.py                # FastAPI backend
+├── data/
+│   ├── transform_to_mongo.py  # Converts raw CSV data into JSONL
+│   ├── mongo_setup.py         # Creates MongoDB indexes and runs sample checks
+│   └── data_loader_mongo.py   # Shared MongoDB loaders and helpers
+└── frontend/                  # React dashboard
+```
+
+## Before you start
+
+You’ll need:
+
+- Python 3.10 or newer
+- Node.js 18 or newer
+- MongoDB running locally on `mongodb://localhost:27017/`
 
 ## Setup
 
-Install Python dependencies:
+Install the Python dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Install frontend dependencies:
+Install the frontend dependencies:
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Typical workflow
+## Preparing the data
 
-1. Convert and import the dataset into MongoDB.
+If you have the Wikipedia pageview CSV file, convert it and import it into MongoDB like this:
 
 ```bash
 python3 data/transform_to_mongo.py
@@ -43,29 +70,132 @@ mongoimport --db wikipedia_traffic --collection pageviews --file data/traffic_lo
 python3 data/mongo_setup.py
 ```
 
-2. Run the analysis and forecasting pipeline.
+By default, the project uses:
+
+- database: `wikipedia_traffic`
+- collection: `pageviews`
+
+## Running the project
+
+### 1. Run the analysis and forecasting pipeline
+
+This step generates plots in `outputs/plots/` and precomputed JSON files in `outputs/precomputed/`.
+
+Run it for a single article:
 
 ```bash
 python3 main.py --article Main_Page
 ```
 
-3. Start the backend API.
+Run it for aggregated traffic:
+
+```bash
+python3 main.py --aggregated
+```
+
+Skip analysis and reuse a known differencing order:
+
+```bash
+python3 main.py --skip-analysis --d 1
+```
+
+### 2. Start the backend
 
 ```bash
 uvicorn backend.main:app --reload
 ```
 
-4. Start the frontend dashboard in another terminal.
+Helpful URLs:
+
+- `http://localhost:8000/docs`
+- `http://localhost:8000/health`
+
+### 3. Start the frontend
+
+Open a second terminal and run:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-The dashboard will be available at `http://localhost:5173`, and the API will run on `http://localhost:8000`.
+You should then have:
 
-## Notes
+- frontend at `http://localhost:5173`
+- backend at `http://localhost:8000`
 
-- The frontend defaults to calling `/api` through the Vite proxy in development.
-- If you want the frontend to talk to a different backend URL, set `VITE_API_BASE_URL`.
-- Generated plots and precomputed JSON are written to `outputs/`, which is ignored by git.
+## Environment notes
+
+In development, the frontend talks to the backend through the Vite proxy using `/api`.
+
+If you want to point the frontend to a different backend URL, set:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+Optional MongoDB environment variables:
+
+```bash
+MONGO_URI=mongodb://localhost:27017/
+MONGO_DB_NAME=wikipedia_traffic
+MONGO_COLLECTION_NAME=pageviews
+```
+
+## Outputs
+
+The project writes generated files to:
+
+- `outputs/plots/` for charts and visual analysis
+- `outputs/precomputed/` for JSON files used by the dashboard
+
+These are generated artifacts, so they are ignored by git.
+
+## Troubleshooting
+
+### The graphs are blank
+
+Usually this means one of these is missing:
+
+- MongoDB is not running
+- the FastAPI backend is not running
+- the dashboard cannot reach the backend
+- the forecast files have not been generated yet
+
+Start by checking:
+
+- `http://localhost:8000/docs`
+- `http://localhost:8000/health`
+
+If the Models page is empty, run:
+
+```bash
+python3 main.py
+```
+
+### I get a missing package error
+
+Reinstall the Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### The forecast page has no results
+
+Generate the precomputed forecast files first:
+
+```bash
+python3 main.py --article Main_Page
+```
+
+## In short
+
+This repo is basically a data project plus a dashboard:
+
+- MongoDB stores the traffic data
+- Python analyzes and forecasts it
+- FastAPI serves it
+- React displays it
+
+If you want, I can also make this README look more GitHub-ready with a quick start section, screenshots, and cleaner formatting for a portfolio project.
