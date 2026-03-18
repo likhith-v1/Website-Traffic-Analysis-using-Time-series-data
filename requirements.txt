@@ -1,3 +1,9 @@
 polars
 pymongo
 tqdm
+fastapi
+uvicorn
+statsmodels
+scikit-learn
+numpy
+matplotlib
