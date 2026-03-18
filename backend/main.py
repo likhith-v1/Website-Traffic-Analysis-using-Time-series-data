@@ -1,159 +1,149 @@
-"""
-backend/main.py
-FastAPI backend — serves live MongoDB queries + precomputed results.
+"""FastAPI backend for the Wikipedia traffic dashboard."""
 
-Install:  pip install fastapi uvicorn pymongo python-dotenv
-Run:      uvicorn backend.main:app --reload --port 8000
-"""
+from __future__ import annotations
 
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pymongo import MongoClient
+import json
 from pathlib import Path
-import json, os
 
-app = FastAPI(title="Wikipedia Traffic API")
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pymongo.errors import PyMongoError
+
+from data.data_loader_mongo import (
+    load_access_breakdown,
+    load_aggregated_daily,
+    load_article,
+    load_project_breakdown,
+    load_stats,
+    load_top_articles,
+    search_articles,
+)
+
+ROOT = Path(__file__).resolve().parent.parent
+PRECOMP_DIR = ROOT / "outputs" / "precomputed"
+
+app = FastAPI(
+    title="Wikipedia Traffic API",
+    description="Backend API for the dashboard and forecasting artifacts.",
+    version="1.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-client = MongoClient(MONGO_URI)
-col = client["wikipedia_traffic"]["pageviews"]
-PRECOMPUTED_DIR = Path("outputs/precomputed")
 
-
-# ── /stats ────────────────────────────────────────────────────────────────────
-@app.get("/stats")
-def get_stats():
-    """MongoDB collection stats."""
-    db = client["wikipedia_traffic"]
-    stats = db.command("collstats", "pageviews")
+@app.get("/")
+def root() -> dict:
     return {
-        "documents":   stats["count"],
-        "size_gb":     round(stats["size"] / 1e9, 2),
-        "indexes":     stats["nindexes"],
-        "date_range":  {"start": "2015-07-01", "end": "2016-12-31"},
-        "projects":    8,
+        "name": "Wikipedia Traffic API",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
     }
 
 
-# ── /top-articles ─────────────────────────────────────────────────────────────
+def frame_to_records(frame) -> list[dict]:
+    """Convert a Polars DataFrame into JSON-friendly records."""
+    return frame.to_dicts()
+
+
+def load_json_file(path: Path):
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path.name}")
+    return json.loads(path.read_text())
+
+
+@app.get("/health")
+def health_check() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/stats")
+def get_stats() -> dict:
+    try:
+        return load_stats()
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load stats: {exc}") from exc
+
+
 @app.get("/top-articles")
-def top_articles(
-    n:       int    = Query(20, le=100),
-    project: str    = Query("en.wikipedia.org"),
-    access:  str    = Query("all-access"),
-):
-    pipeline = [
-        {"$match": {"project": project, "access": access}},
-        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
-        {"$sort":  {"total_views": -1}},
-        {"$limit": n},
-    ]
-    return [{"article": d["_id"], "total_views": d["total_views"]}
-            for d in col.aggregate(pipeline, allowDiskUse=True)]
+def get_top_articles(
+    n: int = Query(default=20, ge=1, le=100),
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+) -> list[dict]:
+    try:
+        return frame_to_records(load_top_articles(n=n, project=project, access=access))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load top articles: {exc}") from exc
 
 
-# ── /article ──────────────────────────────────────────────────────────────────
 @app.get("/article")
 def get_article(
-    name:    str = Query(...),
-    project: str = Query("en.wikipedia.org"),
-    access:  str = Query("all-access"),
-    agent:   str = Query("all-agents"),
-):
-    """Daily views for a single article."""
-    docs = list(col.find(
-        {"article": name, "project": project, "access": access, "agent": agent},
-        {"_id": 0, "date": 1, "views": 1}
-    ).sort("date", 1))
-    if not docs:
-        raise HTTPException(404, f"Article '{name}' not found")
-    return docs
+    name: str = Query(..., min_length=1),
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+) -> list[dict]:
+    try:
+        return frame_to_records(load_article(article=name, project=project, access=access))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load article data: {exc}") from exc
 
 
-# ── /aggregated-daily ─────────────────────────────────────────────────────────
 @app.get("/aggregated-daily")
-def aggregated_daily(
-    project: str = Query("en.wikipedia.org"),
-    access:  str = Query("all-access"),
-    start:   str = Query(None),
-    end:     str = Query(None),
-):
-    """Total daily views across all articles."""
-    match: dict = {"project": project, "access": access}
-    if start: match["date"] = {**match.get("date", {}), "$gte": start}
-    if end:   match["date"] = {**match.get("date", {}), "$lte": end}
-
-    pipeline = [
-        {"$match": match},
-        {"$group": {"_id": "$date", "total_views": {"$sum": "$views"}, "page_count": {"$sum": 1}}},
-        {"$sort":  {"_id": 1}},
-    ]
-    return [{"date": d["_id"], "total_views": d["total_views"], "page_count": d["page_count"]}
-            for d in col.aggregate(pipeline, allowDiskUse=True)]
+def get_aggregated_daily(
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+    start: str | None = None,
+    end: str | None = None,
+) -> list[dict]:
+    try:
+        frame = load_aggregated_daily(project=project, access=access, start=start, end=end)
+        return frame_to_records(frame)
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load aggregated data: {exc}") from exc
 
 
-# ── /project-breakdown ────────────────────────────────────────────────────────
 @app.get("/project-breakdown")
-def project_breakdown():
-    pipeline = [
-        {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
-        {"$sort":  {"total_views": -1}},
-    ]
-    return [{"project": d["_id"] or "unknown", "total_views": d["total_views"]}
-            for d in col.aggregate(pipeline, allowDiskUse=True)]
+def get_project_breakdown() -> list[dict]:
+    try:
+        return frame_to_records(load_project_breakdown())
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load project breakdown: {exc}") from exc
 
 
-# ── /access-breakdown ─────────────────────────────────────────────────────────
 @app.get("/access-breakdown")
-def access_breakdown():
-    pipeline = [
-        {"$match": {"access": {"$ne": None}}},
-        {"$group": {"_id": "$access", "total_views": {"$sum": "$views"}}},
-        {"$sort":  {"total_views": -1}},
-    ]
-    return [{"access": d["_id"], "total_views": d["total_views"]}
-            for d in col.aggregate(pipeline, allowDiskUse=True)]
+def get_access_breakdown() -> list[dict]:
+    try:
+        return frame_to_records(load_access_breakdown())
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load access breakdown: {exc}") from exc
 
 
-# ── /search ───────────────────────────────────────────────────────────────────
 @app.get("/search")
-def search_articles(
-    q:       str = Query(..., min_length=2),
-    project: str = Query("en.wikipedia.org"),
-    limit:   int = Query(10, le=50),
-):
-    """Search article names by substring."""
-    pipeline = [
-        {"$match": {"article": {"$regex": q, "$options": "i"}, "project": project}},
-        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
-        {"$sort":  {"total_views": -1}},
-        {"$limit": limit},
-    ]
-    return [{"article": d["_id"], "total_views": d["total_views"]}
-            for d in col.aggregate(pipeline, allowDiskUse=True)]
+def search(
+    q: str = Query(..., min_length=2),
+    project: str = "en.wikipedia.org",
+) -> list[dict]:
+    try:
+        return frame_to_records(search_articles(query=q, project=project))
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not search articles: {exc}") from exc
 
 
-# ── /precomputed/forecast ─────────────────────────────────────────────────────
-@app.get("/precomputed/forecast")
-def get_forecast(article: str = Query("Main_Page")):
-    """Return precomputed forecast results for an article."""
-    path = PRECOMPUTED_DIR / f"{article}_forecast.json"
-    if not path.exists():
-        raise HTTPException(404, f"No precomputed forecast for '{article}'. Run analysis first.")
-    return json.loads(path.read_text())
-
-
-# ── /precomputed/model-comparison ─────────────────────────────────────────────
 @app.get("/precomputed/model-comparison")
 def get_model_comparison():
-    path = PRECOMPUTED_DIR / "model_comparison.json"
-    if not path.exists():
-        raise HTTPException(404, "Run main.py to generate model comparison.")
-    return json.loads(path.read_text())
+    return load_json_file(PRECOMP_DIR / "model_comparison.json")
+
+
+@app.get("/precomputed/forecast")
+def get_forecast(article: str = Query("Main_Page")):
+    safe_name = article.replace("/", "_")
+    return load_json_file(PRECOMP_DIR / f"{safe_name}_forecast.json")

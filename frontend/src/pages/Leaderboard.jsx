@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { getTopArticles } from '../api/client'
-import { Trophy } from 'lucide-react'
+import PageHeader from '../components/PageHeader'
+import SurfaceCard from '../components/SurfaceCard'
 
 const fmt = n => n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n)
 const MEDAL = ['🥇','🥈','🥉']
@@ -22,24 +23,22 @@ export default function Leaderboard() {
   const max = data[0]?.total_views || 1
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-        <Trophy size={28} color="var(--accent)" />
-        <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32 }}>Leaderboard</div>
-      </div>
-      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 28 }}>
-        Top articles by total views
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        eyebrow="Ranking"
+        title="Leaderboard"
+        subtitle="Compare the highest-traffic articles across Wikipedia language projects and switch between quick ranking presets."
+      />
 
-      {/* Controls */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
+      <div className="toolbar-card">
         <select value={project} onChange={e => setProject(e.target.value)} style={{
           padding: '10px 14px', background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 8, color: 'var(--text)', fontFamily: 'JetBrains Mono', fontSize: 12, outline: 'none',
         }}>
           {PROJECTS.map(p => <option key={p} value={p}>{p.replace('.wikipedia.org', '')} Wikipedia</option>)}
         </select>
-        {[10,20,50].map(v => (
+        <div className="pill-group">
+          {[10,20,50].map(v => (
           <button key={v} onClick={() => setN(v)} style={{
             padding: '10px 18px', borderRadius: 8, border: '1px solid',
             borderColor: n === v ? 'var(--accent)' : 'var(--border)',
@@ -47,15 +46,15 @@ export default function Leaderboard() {
             color: n === v ? 'var(--accent)' : 'var(--muted)',
             fontFamily: 'JetBrains Mono', fontSize: 12, cursor: 'pointer',
           }}>Top {v}</button>
-        ))}
+          ))}
+        </div>
       </div>
 
       {loading
-        ? <div style={{ textAlign: 'center', padding: 64, color: 'var(--muted)', fontFamily: 'JetBrains Mono' }}>Loading from MongoDB…</div>
+        ? <div className="empty-state">Loading from MongoDB…</div>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-            {/* Table */}
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div className="two-column-grid">
+            <SurfaceCard title="Top Articles" subtitle="A ranked list with quick visual comparison of total traffic.">
               {data.map((r, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
@@ -79,11 +78,9 @@ export default function Leaderboard() {
                   </div>
                 </div>
               ))}
-            </div>
+            </SurfaceCard>
 
-            {/* Bar chart */}
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
-              <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Visual Ranking</div>
+            <SurfaceCard title="Visual Ranking" subtitle="The top 15 pages plotted for easier side-by-side comparison.">
               <ResponsiveContainer width="100%" height={Math.max(data.length * 28, 300)}>
                 <BarChart data={data.slice(0,15)} layout="vertical">
                   <XAxis type="number" tickFormatter={fmt} tick={{ fill: '#6b6b8a', fontSize: 10 }} />
@@ -97,7 +94,7 @@ export default function Leaderboard() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </SurfaceCard>
           </div>
         )
       }

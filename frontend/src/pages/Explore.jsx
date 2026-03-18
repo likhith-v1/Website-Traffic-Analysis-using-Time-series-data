@@ -1,21 +1,28 @@
-import { useState, useEffect } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Brush } from 'recharts'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Brush } from 'recharts'
 import { getAggregatedDaily, getArticle } from '../api/client'
+import PageHeader from '../components/PageHeader'
+import SurfaceCard from '../components/SurfaceCard'
 
 const fmt = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n)
 
 const PRESETS = ['Main_Page', 'Special:Search', 'Albert_Einstein', 'Python_(programming_language)', 'Donald_Trump']
 
 export default function Explore() {
+  const [searchParams] = useSearchParams()
+  const articleFromUrl = searchParams.get('article')
   const [mode,    setMode]    = useState('aggregated') // 'aggregated' | 'article'
-  const [article, setArticle] = useState('Main_Page')
-  const [input,   setInput]   = useState('Main_Page')
+  const [article, setArticle] = useState(articleFromUrl || 'Main_Page')
+  const [input,   setInput]   = useState(articleFromUrl || 'Main_Page')
   const [data,    setData]    = useState([])
   const [loading, setLoading] = useState(false)
   const [stats,   setStats]   = useState(null)
+  const [error,   setError]   = useState('')
 
   const load = async () => {
     setLoading(true)
+    setError('')
     try {
       let raw
       if (mode === 'aggregated') {
@@ -33,24 +40,35 @@ export default function Explore() {
           avg: Math.round(views.reduce((a,b)=>a+b,0)/views.length),
           total: views.reduce((a,b)=>a+b,0), points: raw.length,
         })
+      } else {
+        setStats(null)
       }
     } catch (e) {
-      alert(e.response?.data?.detail || 'Error loading data')
+      setData([])
+      setStats(null)
+      setError(e.message || 'Error loading data')
     }
     setLoading(false)
   }
 
+  useEffect(() => {
+    if (!articleFromUrl) return
+    setMode('article')
+    setArticle(articleFromUrl)
+    setInput(articleFromUrl)
+  }, [articleFromUrl])
+
   useEffect(() => { load() }, [mode, article])
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32, marginBottom: 4 }}>Explore</div>
-      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 28 }}>
-        Daily time series — zoom, pan, inspect
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        eyebrow="Interactive"
+        title="Explore"
+        subtitle="Switch between the aggregated traffic stream and individual articles, then zoom into patterns, spikes, and baseline behavior."
+      />
 
-      {/* Controls */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="toolbar-card">
         {['aggregated','article'].map(m => (
           <button key={m} onClick={() => setMode(m)} style={{
             padding: '8px 18px', borderRadius: 8, border: '1px solid',
@@ -64,7 +82,7 @@ export default function Explore() {
         ))}
 
         {mode === 'article' && (
-          <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+          <div style={{ display: 'flex', gap: 8, flex: 1, flexWrap: 'wrap' }}>
             <input value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && setArticle(input)}
               placeholder="Article name e.g. Albert_Einstein"
@@ -82,9 +100,8 @@ export default function Explore() {
         )}
       </div>
 
-      {/* Presets */}
       {mode === 'article' && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="pill-group" style={{ marginBottom: 20 }}>
           {PRESETS.map(p => (
             <button key={p} onClick={() => { setInput(p); setArticle(p) }} style={{
               padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)',
@@ -96,9 +113,8 @@ export default function Explore() {
         </div>
       )}
 
-      {/* Stats row */}
       {stats && (
-        <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
           {[
             ['Data Points', stats.points],
             ['Total Views', fmt(stats.total)],
@@ -106,19 +122,25 @@ export default function Explore() {
             ['Peak',        fmt(stats.max)],
             ['Minimum',     fmt(stats.min)],
           ].map(([l, v]) => (
-            <div key={l} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px' }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--muted)' }}>{l}</div>
-              <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 18, color: 'var(--accent2)' }}>{v}</div>
+              <div key={l} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px' }}>
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--muted)' }}>{l}</div>
+                <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 18, color: 'var(--accent2)' }}>{v}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Chart */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
+      <SurfaceCard
+        title={mode === 'aggregated' ? 'Aggregated Daily Traffic' : article.replace(/_/g, ' ')}
+        subtitle="Use the brush control below the chart to move through the timeline more comfortably."
+      >
         {loading
-          ? <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 13 }}>
+          ? <div className="empty-state" style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               Loading data from MongoDB…
+            </div>
+          : error
+          ? <div className="empty-state" style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent3)' }}>
+              {error}
             </div>
           : <ResponsiveContainer width="100%" height={400}>
               <LineChart data={data}>
@@ -132,7 +154,7 @@ export default function Explore() {
               </LineChart>
             </ResponsiveContainer>
         }
-      </div>
+      </SurfaceCard>
     </div>
   )
 }

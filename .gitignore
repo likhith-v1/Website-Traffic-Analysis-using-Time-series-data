@@ -1,4 +1,34 @@
-data/train_2.csv
-train_2.csv
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Backend runtime files
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Generated outputs
+outputs/
+
+# Large / generated data files
+data/*.csv
+data/*.jsonl
 train_1.csv
-data/traffic_long.jsonl
+train_2.csv
+Zip/
+
+# Keep source code in data/
+!data/*.py

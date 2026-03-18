@@ -1,6 +1,22 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  timeout: 30000,
+})
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    const detail = error.response?.data?.detail
+    const message =
+      detail ||
+      (error.code === 'ECONNABORTED'
+        ? 'Request timed out. Make sure the backend is running.'
+        : 'Request failed. Check the backend connection and try again.')
+    return Promise.reject(new Error(message))
+  }
+)
 
 export const getStats            = ()              => api.get('/stats').then(r => r.data)
 export const getTopArticles      = (n=20, project='en.wikipedia.org', access='all-access') =>

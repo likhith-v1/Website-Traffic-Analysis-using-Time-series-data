@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { searchArticles } from '../api/client'
+import PageHeader from '../components/PageHeader'
+import SurfaceCard from '../components/SurfaceCard'
 
 const fmt = n => n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n)
 
@@ -11,6 +13,7 @@ export default function SearchPage() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const PROJECTS = ['en.wikipedia.org','de.wikipedia.org','fr.wikipedia.org','es.wikipedia.org','ru.wikipedia.org','ja.wikipedia.org','zh.wikipedia.org']
@@ -19,20 +22,26 @@ export default function SearchPage() {
     if (q.length < 2) return
     setLoading(true)
     setSearched(true)
-    const res = await searchArticles(q, project)
-    setResults(res)
+    setError('')
+    try {
+      const res = await searchArticles(q, project)
+      setResults(res)
+    } catch (err) {
+      setResults([])
+      setError(err.message || 'Search failed')
+    }
     setLoading(false)
   }
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32, marginBottom: 4 }}>Search</div>
-      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 32 }}>
-        Find any Wikipedia article in the dataset
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        eyebrow="Lookup"
+        title="Search"
+        subtitle="Find articles in the dataset and jump straight into exploration without digging through raw records."
+      />
 
-      {/* Search bar */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+      <div className="toolbar-card" style={{ marginBottom: 16 }}>
         <div style={{ flex: 1, position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
@@ -55,21 +64,21 @@ export default function SearchPage() {
         }}>Search</button>
       </div>
 
-      {/* Results */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 13 }}>
+        <div className="empty-state">
           Querying MongoDB…
         </div>
       )}
 
       {!loading && searched && results.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 13 }}>
-          No results found for "{q}"
+        <div className="empty-state">
+          {error || `No results found for "${q}"`}
         </div>
       )}
 
       {!loading && results.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <SurfaceCard title="Search Results" subtitle={`${results.length} matching articles ranked by total views.`}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {results.map((r, i) => (
             <div key={i} onClick={() => navigate(`/explore?article=${r.article}`)}
               style={{
@@ -83,7 +92,7 @@ export default function SearchPage() {
               className="animate-fade-up"
             >
               <div>
-                <div style={{ fontFamily: 'DM Sans', fontSize: 15, fontWeight: 500 }}>{r.article.replace(/_/g, ' ')}</div>
+                <div style={{ fontFamily: 'DM Sans', fontSize: 15, fontWeight: 600 }}>{r.article.replace(/_/g, ' ')}</div>
                 <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{project}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -92,7 +101,8 @@ export default function SearchPage() {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </SurfaceCard>
       )}
     </div>
   )

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getStats, getProjectBreakdown, getAccessBreakdown } from '../api/client'
 import { Database, HardDrive, Layers, Globe } from 'lucide-react'
+import PageHeader from '../components/PageHeader'
+import SurfaceCard from '../components/SurfaceCard'
 
 const fmt = n => n >= 1e9 ? (n/1e9).toFixed(2)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n)
 
@@ -34,19 +36,17 @@ export default function DatabasePage() {
   ]
 
   return (
-    <div style={{ padding: 32 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-        <Database size={28} color="var(--accent)" />
-        <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32 }}>Database</div>
-      </div>
-      <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)', marginBottom: 32 }}>
-        MongoDB · wikipedia_traffic.pageviews
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        eyebrow="Infrastructure"
+        title="Database"
+        subtitle="A more readable snapshot of the MongoDB collection, indexing strategy, and language distribution behind the dashboard."
+        actions={<Database size={22} color="var(--accent)" />}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div className="two-column-grid">
 
-        {/* Collection stats */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 12, padding: 24, boxShadow: '0 0 24px rgba(232,255,71,0.06)' }}>
+        <SurfaceCard title="Collection Stats" subtitle="Core details about the active MongoDB collection." accent="highlight">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <HardDrive size={16} color="var(--accent)" />
             <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>Collection Stats</span>
@@ -60,10 +60,9 @@ export default function DatabasePage() {
             <Row label="Database"       value="wikipedia_traffic" />
             <Row label="Collection"     value="pageviews" />
           </> : <div style={{ color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Loading…</div>}
-        </div>
+        </SurfaceCard>
 
-        {/* Indexes */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
+        <SurfaceCard title={`Indexes (${INDEXES.length})`} subtitle="The key indexes that keep lookups and leaderboard queries fast.">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Layers size={16} color="var(--accent2)" />
             <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>Indexes ({INDEXES.length})</span>
@@ -74,10 +73,9 @@ export default function DatabasePage() {
               <div style={{ fontFamily: 'DM Sans', fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{idx.desc}</div>
             </div>
           ))}
-        </div>
+        </SurfaceCard>
 
-        {/* Projects breakdown */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
+        <SurfaceCard title="Views by Language" subtitle="A compact breakdown of how total views are distributed across projects.">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Globe size={16} color="var(--accent3)" />
             <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>Views by Language</span>
@@ -97,11 +95,9 @@ export default function DatabasePage() {
               </div>
             )
           })}
-        </div>
+        </SurfaceCard>
 
-        {/* Schema */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
-          <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Document Schema</div>
+        <SurfaceCard title="Document Schema" subtitle="Representative shape of a pageview document stored in MongoDB.">
           <pre style={{
             fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text)', lineHeight: 1.8,
             background: 'var(--bg)', padding: 16, borderRadius: 8, overflow: 'auto',
@@ -118,7 +114,7 @@ export default function DatabasePage() {
   "day_of_week": 1,
   "week":        11
 }`}</pre>
-        </div>
+        </SurfaceCard>
 
       </div>
     </div>

@@ -1,14 +1,16 @@
 """Load and prepare Wikipedia traffic data with Polars.
 
-This module includes MongoDB loaders and small preprocessing helpers.
+The helpers in this file are shared by the CLI pipeline and the FastAPI app.
 """
+
+import os
 
 import polars as pl
 from pymongo import MongoClient
 
-MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME   = "wikipedia_traffic"
-COL_NAME  = "pageviews"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("MONGO_DB_NAME", "wikipedia_traffic")
+COL_NAME = os.getenv("MONGO_COLLECTION_NAME", "pageviews")
 
 
 # MongoDB connection
@@ -104,6 +106,67 @@ def load_by_project_breakdown(date: str = "2016-01-01") -> pl.DataFrame:
         {"$sort": {"total_views": -1}}
     ]
     return pl.DataFrame(list(col.aggregate(pipeline))).rename({"_id": "project"})
+
+
+def load_project_breakdown(project_limit: int | None = None) -> pl.DataFrame:
+    """Return total views grouped by project."""
+    col = get_collection()
+    pipeline = [
+        {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
+        {"$sort": {"total_views": -1}},
+    ]
+    if project_limit is not None:
+        pipeline.append({"$limit": project_limit})
+    return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "project"})
+
+
+def load_access_breakdown() -> pl.DataFrame:
+    """Return total views grouped by access type."""
+    col = get_collection()
+    pipeline = [
+        {"$group": {"_id": "$access", "total_views": {"$sum": "$views"}}},
+        {"$sort": {"total_views": -1}},
+    ]
+    return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "access"})
+
+
+def search_articles(query: str, project: str = "en.wikipedia.org", limit: int = 20) -> pl.DataFrame:
+    """Search articles by name and rank them by total views."""
+    col = get_collection()
+    pipeline = [
+        {
+            "$match": {
+                "project": project,
+                "article": {"$regex": query, "$options": "i"},
+            }
+        },
+        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
+        {"$sort": {"total_views": -1}},
+        {"$limit": limit},
+    ]
+    return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "article"})
+
+
+def load_stats() -> dict:
+    """Return lightweight collection stats for the dashboard."""
+    col = get_collection()
+    db = col.database
+    stats = db.command("collstats", COL_NAME)
+
+    first_doc = col.find_one(sort=[("date", 1)], projection={"_id": 0, "date": 1})
+    last_doc = col.find_one(sort=[("date", -1)], projection={"_id": 0, "date": 1})
+    project_count = len(col.distinct("project"))
+
+    return {
+        "documents": int(stats.get("count", 0)),
+        "size_gb": round(stats.get("size", 0) / 1e9, 3),
+        "indexes": int(stats.get("nindexes", 0)),
+        "projects": project_count,
+        "date_range": {
+            "start": first_doc["date"] if first_doc else None,
+            "end": last_doc["date"] if last_doc else None,
+        },
+    }
 
 
 def load_from_jsonl(filepath: str, article_filter: str = None) -> pl.DataFrame:
