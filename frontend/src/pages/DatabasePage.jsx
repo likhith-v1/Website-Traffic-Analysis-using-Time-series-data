@@ -15,8 +15,8 @@ const Row = ({ label, value, accent }) => (
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '12px 0', borderBottom: '1px solid var(--border)',
   }}>
-    <span style={{ fontFamily: 'DM Sans', fontSize: 14, color: 'var(--muted)' }}>{label}</span>
-    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 14, color: accent ? 'var(--accent)' : 'var(--text)' }}>
+    <span style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--muted)' }}>{label}</span>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: accent ? 'var(--accent)' : 'var(--text)' }}>
       {value}
     </span>
   </div>
@@ -59,7 +59,7 @@ export default function DatabasePage() {
         <SurfaceCard accent="highlight">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <HardDrive size={16} color="var(--accent)" />
-            <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>Collection Stats</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>Collection Stats</span>
           </div>
           {stats ? (
             <>
@@ -72,7 +72,7 @@ export default function DatabasePage() {
               <Row label="Collection"        value="pageviews" />
             </>
           ) : (
-            <div style={{ color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Loading…</div>
+            <div style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>Loading…</div>
           )}
         </SurfaceCard>
 
@@ -80,7 +80,7 @@ export default function DatabasePage() {
         <SurfaceCard>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Layers size={16} color="var(--accent2)" />
-            <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>
               Indexes ({INDEXES.length})
             </span>
           </div>
@@ -89,8 +89,8 @@ export default function DatabasePage() {
               padding: '10px 0',
               borderBottom: i < INDEXES.length - 1 ? '1px solid var(--border)' : 'none',
             }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--accent2)' }}>{idx.name}</div>
-              <div style={{ fontFamily: 'DM Sans', fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{idx.desc}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent2)' }}>{idx.name}</div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{idx.desc}</div>
             </div>
           ))}
         </SurfaceCard>
@@ -99,7 +99,7 @@ export default function DatabasePage() {
         <SurfaceCard>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
             <Globe size={16} color="var(--accent3)" />
-            <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15 }}>Views by Language</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>Views by Language</span>
           </div>
           {projects.length > 0 ? projects.map((p, i) => {
             const total = projects.reduce((s, x) => s + x.total_views, 0)
@@ -107,23 +107,23 @@ export default function DatabasePage() {
             return (
               <div key={i} style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
                     {p.project?.replace('.wikipedia.org', '') || 'unknown'}
                   </span>
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--muted)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--muted)' }}>
                     {fmt(p.total_views)} · {pct}%
                   </span>
                 </div>
                 <div style={{ height: 6, background: 'var(--border)', borderRadius: 3 }}>
                   <div style={{
                     height: '100%', width: `${pct}%`,
-                    background: `hsl(${i * 45},70%,60%)`, borderRadius: 3,
+                    background: `var(--chart-palette-${(i % 8) + 1})`, borderRadius: 3,
                   }} />
                 </div>
               </div>
             )
           }) : (
-            <div style={{ color: 'var(--muted)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Loading…</div>
+            <div style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>Loading…</div>
           )}
         </SurfaceCard>
 
@@ -133,7 +133,7 @@ export default function DatabasePage() {
           subtitle="Representative shape of a pageview document stored in MongoDB."
         >
           <pre style={{
-            fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text)', lineHeight: 1.8,
+            fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text)', lineHeight: 1.8,
             background: 'var(--bg)', padding: 16, borderRadius: 8, overflow: 'auto',
           }}>{`{
   "article":     "Main_Page",
