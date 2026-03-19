@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pymongo.errors import PyMongoError
 
 from data.data_loader_mongo import (
@@ -28,14 +31,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Allow both localhost and 127.0.0.1 variants so the Vite dev server works
-# regardless of which loopback address the browser resolves to.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "http://localhost:4173",   # vite preview
+        "http://localhost:4173",
         "http://127.0.0.1:4173",
     ],
     allow_credentials=True,
@@ -44,18 +45,11 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def root() -> dict:
-    return {
-        "name": "Wikipedia Traffic API",
-        "status": "ok",
-        "docs": "/docs",
-        "health": "/health",
-    }
-
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def frame_to_records(frame) -> list[dict]:
-    """Convert a Polars DataFrame into JSON-friendly records."""
     return frame.to_dicts()
 
 
@@ -63,6 +57,15 @@ def load_json_file(path: Path):
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {path.name}")
     return json.loads(path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# Core routes
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+def root() -> dict:
+    return {"name": "Wikipedia Traffic API", "status": "ok", "docs": "/docs", "health": "/health"}
 
 
 @app.get("/health")
@@ -154,3 +157,49 @@ def get_model_comparison():
 def get_forecast(article: str = Query("Main_Page")):
     safe_name = article.replace("/", "_")
     return load_json_file(PRECOMP_DIR / f"{safe_name}_forecast.json")
+
+
+# ---------------------------------------------------------------------------
+# Pipeline SSE endpoint
+# ---------------------------------------------------------------------------
+
+@app.get("/run-pipeline")
+async def run_pipeline(
+    article: str = Query(default="Main_Page"),
+    skip_analysis: bool = Query(default=False),
+    d: int = Query(default=1),
+):
+    """
+    Stream pipeline stdout line-by-line as Server-Sent Events.
+    Final event is either  data: DONE  or  data: ERROR:<message>
+    """
+    cmd = [sys.executable, str(ROOT / "main.py"), "--article", article]
+    if skip_analysis:
+        cmd += ["--skip-analysis", "--d", str(d)]
+
+    async def event_stream():
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(ROOT),
+            )
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").rstrip()
+                if line:
+                    yield f"data: {line}\n\n"
+                await asyncio.sleep(0)
+            await proc.wait()
+            if proc.returncode == 0:
+                yield "data: DONE\n\n"
+            else:
+                yield f"data: ERROR:Pipeline exited with code {proc.returncode}\n\n"
+        except Exception as exc:
+            yield f"data: ERROR:{exc}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
