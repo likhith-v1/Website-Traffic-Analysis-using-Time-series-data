@@ -1,6 +1,19 @@
 """Load and prepare Wikipedia traffic data with Polars.
 
 The helpers in this file are shared by the CLI pipeline and the FastAPI app.
+
+MongoDB connection
+------------------
+A single ``MongoClient`` instance is created at module import time and reused
+across all calls.  This avoids the overhead of opening a new TCP connection on
+every request, which was the original behaviour (``get_collection`` called
+``MongoClient(...)`` unconditionally each time).
+
+You can still override the target database/collection via environment variables:
+
+    MONGO_URI              – default: mongodb://localhost:27017/
+    MONGO_DB_NAME          – default: wikipedia_traffic
+    MONGO_COLLECTION_NAME  – default: pageviews
 """
 
 import os
@@ -12,26 +25,41 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = os.getenv("MONGO_DB_NAME", "wikipedia_traffic")
 COL_NAME = os.getenv("MONGO_COLLECTION_NAME", "pageviews")
 
+# Module-level singleton — one connection pool shared by all callers.
+_client: MongoClient | None = None
 
-# MongoDB connection
+
+def _get_client() -> MongoClient:
+    """Return the shared MongoClient, creating it on first call."""
+    global _client
+    if _client is None:
+        _client = MongoClient(MONGO_URI)
+    return _client
+
 
 def get_collection():
-    client = MongoClient(MONGO_URI)
-    return client[DB_NAME][COL_NAME]
+    """Return the configured MongoDB collection using the shared client."""
+    return _get_client()[DB_NAME][COL_NAME]
 
 
+# ---------------------------------------------------------------------------
 # Data loaders
+# ---------------------------------------------------------------------------
 
-def load_article(article: str,
-                 project: str = "en.wikipedia.org",
-                 access:  str = "all-access",
-                 agent:   str = "all-agents") -> pl.DataFrame:
+def load_article(
+    article: str,
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+    agent: str = "all-agents",
+) -> pl.DataFrame:
     """Return daily views for one article, sorted by date."""
     col = get_collection()
-    docs = list(col.find(
-        {"article": article, "project": project, "access": access, "agent": agent},
-        {"_id": 0, "date": 1, "views": 1}
-    ).sort("date", 1))
+    docs = list(
+        col.find(
+            {"article": article, "project": project, "access": access, "agent": agent},
+            {"_id": 0, "date": 1, "views": 1},
+        ).sort("date", 1)
+    )
 
     if not docs:
         raise ValueError(f"No data for article='{article}', project='{project}'")
@@ -45,29 +73,35 @@ def load_article(article: str,
     return df
 
 
-def load_aggregated_daily(project: str = "en.wikipedia.org",
-                           access:  str = "all-access",
-                           start:   str = None,
-                           end:     str = None) -> pl.DataFrame:
+def load_aggregated_daily(
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+    start: str | None = None,
+    end: str | None = None,
+) -> pl.DataFrame:
     """Return daily totals across all articles for one project/access pair."""
     col = get_collection()
     match: dict = {"project": project, "access": access}
     if start or end:
-        date_filter = {}
-        if start: date_filter["$gte"] = start
-        if end:   date_filter["$lte"] = end
+        date_filter: dict = {}
+        if start:
+            date_filter["$gte"] = start
+        if end:
+            date_filter["$lte"] = end
         match["date"] = date_filter
 
     pipeline = [
         {"$match": match},
-        {"$group": {
-            "_id":         "$date",
-            "total_views": {"$sum": "$views"},
-            "page_count":  {"$sum": 1},
-            "avg_views":   {"$avg": "$views"},
-            "max_views":   {"$max": "$views"},
-        }},
-        {"$sort": {"_id": 1}}
+        {
+            "$group": {
+                "_id": "$date",
+                "total_views": {"$sum": "$views"},
+                "page_count": {"$sum": 1},
+                "avg_views": {"$avg": "$views"},
+                "max_views": {"$max": "$views"},
+            }
+        },
+        {"$sort": {"_id": 1}},
     ]
 
     docs = list(col.aggregate(pipeline, allowDiskUse=True))
@@ -81,16 +115,18 @@ def load_aggregated_daily(project: str = "en.wikipedia.org",
     return df
 
 
-def load_top_articles(n: int = 50,
-                      project: str = "en.wikipedia.org",
-                      access:  str = "all-access") -> pl.DataFrame:
+def load_top_articles(
+    n: int = 50,
+    project: str = "en.wikipedia.org",
+    access: str = "all-access",
+) -> pl.DataFrame:
     """Return top N articles ranked by total views."""
     col = get_collection()
     pipeline = [
         {"$match": {"project": project, "access": access}},
         {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
         {"$sort": {"total_views": -1}},
-        {"$limit": n}
+        {"$limit": n},
     ]
     df = pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "article"})
     print(f"Top {n} articles:\n{df.head(10)}")
@@ -103,7 +139,7 @@ def load_by_project_breakdown(date: str = "2016-01-01") -> pl.DataFrame:
     pipeline = [
         {"$match": {"date": date}},
         {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
-        {"$sort": {"total_views": -1}}
+        {"$sort": {"total_views": -1}},
     ]
     return pl.DataFrame(list(col.aggregate(pipeline))).rename({"_id": "project"})
 
@@ -111,7 +147,7 @@ def load_by_project_breakdown(date: str = "2016-01-01") -> pl.DataFrame:
 def load_project_breakdown(project_limit: int | None = None) -> pl.DataFrame:
     """Return total views grouped by project."""
     col = get_collection()
-    pipeline = [
+    pipeline: list[dict] = [
         {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
         {"$sort": {"total_views": -1}},
     ]
@@ -130,7 +166,11 @@ def load_access_breakdown() -> pl.DataFrame:
     return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "access"})
 
 
-def search_articles(query: str, project: str = "en.wikipedia.org", limit: int = 20) -> pl.DataFrame:
+def search_articles(
+    query: str,
+    project: str = "en.wikipedia.org",
+    limit: int = 20,
+) -> pl.DataFrame:
     """Search articles by name and rank them by total views."""
     col = get_collection()
     pipeline = [
@@ -169,7 +209,7 @@ def load_stats() -> dict:
     }
 
 
-def load_from_jsonl(filepath: str, article_filter: str = None) -> pl.DataFrame:
+def load_from_jsonl(filepath: str, article_filter: str | None = None) -> pl.DataFrame:
     """Load JSONL directly with Polars, without using MongoDB."""
     df = pl.read_ndjson(filepath)
     df = df.with_columns(pl.col("date").str.to_date("%Y-%m-%d")).sort("date")
@@ -179,39 +219,49 @@ def load_from_jsonl(filepath: str, article_filter: str = None) -> pl.DataFrame:
     return df
 
 
+# ---------------------------------------------------------------------------
 # Preprocessing helpers
+# ---------------------------------------------------------------------------
 
-def fill_missing_dates(df: pl.DataFrame, date_col: str = "date",
-                       views_col: str = "views") -> pl.DataFrame:
+def fill_missing_dates(
+    df: pl.DataFrame,
+    date_col: str = "date",
+    views_col: str = "views",
+) -> pl.DataFrame:
     """Fill missing dates in a single-article series with 0 views."""
-    full = pl.date_range(
-        df[date_col].min(), df[date_col].max(), interval="1d", eager=True
-    ).alias(date_col).to_frame()
-    df = full.join(df, on=date_col, how="left").with_columns(
-        pl.col(views_col).fill_null(0)
+    full = (
+        pl.date_range(df[date_col].min(), df[date_col].max(), interval="1d", eager=True)
+        .alias(date_col)
+        .to_frame()
     )
-    print(f"Filled missing dates → {len(df)} total rows")
+    df = full.join(df, on=date_col, how="left").with_columns(pl.col(views_col).fill_null(0))
+    print(f"Filled missing dates -> {len(df)} total rows")
     return df
 
 
 def add_time_features(df: pl.DataFrame, date_col: str = "date") -> pl.DataFrame:
     """Add simple calendar features for analysis and modeling."""
-    return df.with_columns([
-        pl.col(date_col).dt.year().alias("year"),
-        pl.col(date_col).dt.month().alias("month"),
-        pl.col(date_col).dt.day().alias("day"),
-        pl.col(date_col).dt.weekday().alias("day_of_week"),
-        pl.col(date_col).dt.week().alias("week"),
-        pl.col(date_col).dt.quarter().alias("quarter"),
-        (pl.col(date_col).dt.weekday() >= 5).cast(pl.Int8).alias("is_weekend"),
-    ])
+    return df.with_columns(
+        [
+            pl.col(date_col).dt.year().alias("year"),
+            pl.col(date_col).dt.month().alias("month"),
+            pl.col(date_col).dt.day().alias("day"),
+            pl.col(date_col).dt.weekday().alias("day_of_week"),
+            pl.col(date_col).dt.week().alias("week"),
+            pl.col(date_col).dt.quarter().alias("quarter"),
+            (pl.col(date_col).dt.weekday() >= 5).cast(pl.Int8).alias("is_weekend"),
+        ]
+    )
 
 
-def split_train_test(df: pl.DataFrame, views_col: str = "views",
-                     test_days: int = 60) -> tuple[pl.Series, pl.Series]:
+def split_train_test(
+    df: pl.DataFrame,
+    views_col: str = "views",
+    test_days: int = 60,
+) -> tuple[pl.Series, pl.Series]:
     """Split into train/test by last N rows."""
     series = df[views_col]
     train = series[:-test_days]
-    test  = series[-test_days:]
+    test = series[-test_days:]
     print(f"Train: {len(train)} days | Test: {len(test)} days")
     return train, test

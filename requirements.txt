@@ -2,7 +2,9 @@ polars
 pymongo
 tqdm
 fastapi
-uvicorn
+uvicorn[standard]
+python-multipart
+httpx
 statsmodels
 scikit-learn
 numpy
