@@ -30,6 +30,8 @@ export const searchArticles      = (q, project='en.wikipedia.org') =>
   api.get('/search', { params: { q, project } }).then(r => r.data)
 export const getForecast         = (article)       => api.get('/precomputed/forecast', { params: { article } }).then(r => r.data)
 export const getModelComparison  = ()              => api.get('/precomputed/model-comparison').then(r => r.data)
+export const getAnalysisResults  = ()              => api.get('/precomputed/analysis').then(r => r.data)
+export const getPlotUrl          = (filename)      => `${BASE}/plots/${filename}`
 
 /**
  * Open a Server-Sent Events connection to /run-pipeline and call callbacks

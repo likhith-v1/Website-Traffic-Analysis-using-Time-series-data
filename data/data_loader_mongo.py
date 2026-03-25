@@ -17,6 +17,7 @@ You can still override the target database/collection via environment variables:
 """
 
 import os
+import re
 
 import polars as pl
 from pymongo import MongoClient
@@ -172,12 +173,17 @@ def search_articles(
     limit: int = 20,
 ) -> pl.DataFrame:
     """Search articles by name and rank them by total views."""
+    # Escape regex metacharacters, then treat spaces as [_ ] so
+    # "donald trump" matches "donald_trump" (MediaWiki canonical form).
+    safe_query = re.escape(query)
+    safe_query = safe_query.replace(r"\ ", "[_ ]").replace(" ", "[_ ]")
+
     col = get_collection()
     pipeline = [
         {
             "$match": {
                 "project": project,
-                "article": {"$regex": query, "$options": "i"},
+                "article": {"$regex": safe_query, "$options": "i"},
             }
         },
         {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},

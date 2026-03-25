@@ -7,6 +7,7 @@ This script keeps the happy path simple:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -60,7 +61,7 @@ def main() -> None:
         print("\n" + "=" * 60)
         print("Step 1: Time Series Analysis")
         print("=" * 60)
-        _, d_detected, _ = run_analysis(
+        _, d_detected, summary = run_analysis(
             article=args.article,
             project=args.project,
             access=args.access,
@@ -68,6 +69,10 @@ def main() -> None:
         )
         if d is None:
             d = d_detected
+        analysis_path = ROOT / "outputs" / "precomputed" / "analysis_results.json"
+        analysis_path.parent.mkdir(parents=True, exist_ok=True)
+        analysis_path.write_text(json.dumps(summary, indent=2, default=str))
+        print(f"Saved JSON -> analysis_results.json")
     else:
         if d is None:
             d = 1

@@ -31,6 +31,40 @@ sys.path.insert(0, str(ROOT))
 
 from data.data_loader_mongo import fill_missing_dates, load_aggregated_daily, load_article
 
+# ---------------------------------------------------------------------------
+# Theme colour palettes — kept in sync with frontend CSS variables
+# ---------------------------------------------------------------------------
+THEMES: dict[str, dict] = {
+    "dark": {
+        "fig_bg":    "#0f172a",
+        "ax_bg":     "#111827",
+        "text":      "#e5e7eb",
+        "muted":     "#94a3b8",
+        "spine":     "#1f2937",
+        "train":     "#94a3b8",
+        "actual":    "#38bdf8",
+        "forecast":  "#818cf8",
+        "future":    "#34d399",
+        "palette":   ["#818cf8", "#38bdf8", "#c084fc", "#fb923c"],
+        "legend_bg": "#1e2433",
+        "edge":      "#0f172a",
+    },
+    "light": {
+        "fig_bg":    "#f7f8fa",
+        "ax_bg":     "#ffffff",
+        "text":      "#111827",
+        "muted":     "#6b7280",
+        "spine":     "#d1d5db",
+        "train":     "#9ca3af",
+        "actual":    "#0891b2",
+        "forecast":  "#4338ca",
+        "future":    "#059669",
+        "palette":   ["#4338ca", "#0891b2", "#7c3aed", "#ea580c"],
+        "legend_bg": "#f0f2f6",
+        "edge":      "#f7f8fa",
+    },
+}
+
 
 def to_pandas_series(df, date_col: str = "date", views_col: str = "views") -> pd.Series:
     dates = pd.to_datetime(df.get_column(date_col).to_list())
@@ -72,24 +106,65 @@ def evaluate(actual, predicted, model_name: str = "") -> dict:
 
 
 def save_forecast_plot(train, test, forecast, future, model_name: str, filename: str) -> None:
-    fig, ax = plt.subplots(figsize=(14, 5))
-    fig.patch.set_facecolor("#0a0a0f")
-    ax.set_facecolor("#0a0a0f")
-    ax.plot(train.index, train.values, color="#6b6b8a", linewidth=1, label="Train")
-    ax.plot(test.index, test.values, color="#47c8ff", linewidth=2, label="Actual (test)")
-    ax.plot(test.index, forecast, color="#e8ff47", linewidth=2, linestyle="--", label=f"Forecast ({model_name})")
-    if future is not None:
-        future_index = pd.date_range(test.index[-1] + pd.Timedelta(days=1), periods=len(future), freq="D")
-        ax.plot(future_index, future, color="#ff6b6b", linewidth=2, linestyle=":", label="Future")
-    ax.set_title(f"{model_name} Forecast vs Actual", color="#e8e8f0", fontsize=13, fontweight="bold")
-    ax.tick_params(colors="#6b6b8a")
-    ax.spines[:].set_color("#1e1e2e")
-    ax.legend(facecolor="#111118", labelcolor="#e8e8f0", edgecolor="#1e1e2e")
-    plt.tight_layout()
-    path = PLOTS_DIR / filename
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved plot -> {path.name}")
+    """Save forecast plot in both light and dark themes."""
+    for theme, c in THEMES.items():
+        fig, ax = plt.subplots(figsize=(14, 5))
+        fig.patch.set_facecolor(c["fig_bg"])
+        ax.set_facecolor(c["ax_bg"])
+        ax.plot(train.index, train.values, color=c["train"], linewidth=1, label="Train")
+        ax.plot(test.index, test.values, color=c["actual"], linewidth=2, label="Actual (test)")
+        ax.plot(
+            test.index, forecast, color=c["forecast"],
+            linewidth=2, linestyle="--", label=f"Forecast ({model_name})",
+        )
+        if future is not None:
+            future_index = pd.date_range(
+                test.index[-1] + pd.Timedelta(days=1), periods=len(future), freq="D"
+            )
+            ax.plot(future_index, future, color=c["future"], linewidth=2, linestyle=":", label="Future")
+        ax.set_title(f"{model_name} Forecast vs Actual", color=c["text"], fontsize=13, fontweight="bold")
+        ax.tick_params(colors=c["muted"])
+        for spine in ax.spines.values():
+            spine.set_color(c["spine"])
+        ax.legend(facecolor=c["legend_bg"], labelcolor=c["text"], edgecolor=c["spine"])
+        plt.tight_layout()
+
+        stem, ext = filename.rsplit(".", 1)
+        path = PLOTS_DIR / f"{stem}_{theme}.{ext}"
+        fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        print(f"Saved plot -> {path.name}")
+
+
+def plot_comparison(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows).sort_values("MAPE (%)")
+
+    for theme, c in THEMES.items():
+        fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+        fig.patch.set_facecolor(c["fig_bg"])
+
+        for ax, metric in zip(axes, ["MAE", "RMSE", "MAPE (%)"]):
+            ax.barh(
+                df["Model"],
+                df[metric],
+                color=[c["palette"][i % len(c["palette"])] for i in range(len(df))],
+                edgecolor=c["edge"],
+            )
+            ax.set_title(metric, color=c["text"], fontsize=12)
+            ax.set_facecolor(c["ax_bg"])
+            ax.tick_params(colors=c["muted"])
+            for spine in ax.spines.values():
+                spine.set_color(c["spine"])
+            ax.invert_yaxis()
+
+        fig.suptitle("Model Comparison", color=c["text"], fontsize=13, fontweight="bold")
+        plt.tight_layout()
+        path = PLOTS_DIR / f"11_model_comparison_{theme}.png"
+        fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        print(f"Saved plot -> {path.name}")
+
+    return df
 
 
 def split_series(series: pd.Series, test_days: int = 60) -> tuple[pd.Series, pd.Series]:
@@ -146,34 +221,6 @@ def fit_sarima(train, test, d: int = 1, forecast_steps: int = 30):
     future = model.forecast(steps=len(test) + forecast_steps).values[-forecast_steps:]
     save_forecast_plot(train, test, forecast, future, "SARIMA", "10_sarima.png")
     return evaluate(test.values, forecast, f"SARIMA{order}x{seasonal_order}"), forecast.tolist(), future.tolist()
-
-
-def plot_comparison(rows: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(rows).sort_values("MAPE (%)")
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    fig.patch.set_facecolor("#0a0a0f")
-    colors = ["#e8ff47", "#47c8ff", "#ff6b6b", "#a855f7"]
-
-    for ax, metric in zip(axes, ["MAE", "RMSE", "MAPE (%)"]):
-        ax.barh(
-            df["Model"],
-            df[metric],
-            color=[colors[index % len(colors)] for index in range(len(df))],
-            edgecolor="#0a0a0f",
-        )
-        ax.set_title(metric, color="#e8e8f0", fontsize=12)
-        ax.set_facecolor("#0a0a0f")
-        ax.tick_params(colors="#6b6b8a")
-        ax.spines[:].set_color("#1e1e2e")
-        ax.invert_yaxis()
-
-    fig.suptitle("Model Comparison", color="#e8e8f0", fontsize=13, fontweight="bold")
-    plt.tight_layout()
-    output_path = PLOTS_DIR / "11_model_comparison.png"
-    fig.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved plot -> {output_path.name}")
-    return df
 
 
 def best_model_key(model_name: str) -> str:

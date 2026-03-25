@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pymongo.errors import PyMongoError
 
 from data.data_loader_mongo import (
@@ -24,6 +24,7 @@ from data.data_loader_mongo import (
 
 ROOT = Path(__file__).resolve().parent.parent
 PRECOMP_DIR = ROOT / "outputs" / "precomputed"
+PLOTS_DIR   = ROOT / "outputs" / "plots"
 
 app = FastAPI(
     title="Wikipedia Traffic API",
@@ -157,6 +158,19 @@ def get_model_comparison():
 def get_forecast(article: str = Query("Main_Page")):
     safe_name = article.replace("/", "_")
     return load_json_file(PRECOMP_DIR / f"{safe_name}_forecast.json")
+
+
+@app.get("/precomputed/analysis")
+def get_analysis():
+    return load_json_file(PRECOMP_DIR / "analysis_results.json")
+
+
+@app.get("/plots/{filename}")
+def get_plot(filename: str):
+    path = PLOTS_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Plot not found")
+    return FileResponse(path, media_type="image/png")
 
 
 # ---------------------------------------------------------------------------

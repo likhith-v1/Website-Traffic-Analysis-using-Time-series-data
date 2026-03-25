@@ -51,6 +51,8 @@ export default function SearchPage() {
           <input
             value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
             placeholder="Search articles… (e.g. Python, Einstein, Football)"
             style={{
               width: '100%', padding: '11px 14px 11px 38px',
@@ -58,6 +60,7 @@ export default function SearchPage() {
               borderRadius: 9, color: 'var(--text)',
               fontFamily: 'var(--font-body)', fontSize: 13, outline: 'none',
               fontWeight: 300,
+              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
             }}
           />
         </div>
@@ -68,12 +71,18 @@ export default function SearchPage() {
         }}>
           {PROJECTS.map(p => <option key={p} value={p}>{p.replace('.wikipedia.org', '')}</option>)}
         </select>
-        <button onClick={search} style={{
-          padding: '11px 22px', background: 'var(--accent)', color: 'white',
-          border: 'none', borderRadius: 9,
-          fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13,
-          cursor: 'pointer', letterSpacing: '0.01em',
-        }}>Search</button>
+        <button
+          onClick={search}
+          onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
+          onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+          style={{
+            padding: '11px 22px', background: 'var(--accent)', color: 'white',
+            border: 'none', borderRadius: 9,
+            fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13,
+            cursor: 'pointer', letterSpacing: '0.01em',
+            transition: 'opacity 0.15s ease',
+          }}
+        >Search</button>
       </div>
 
       {loading && <div className="empty-state">Querying MongoDB…</div>}
