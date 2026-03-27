@@ -22,17 +22,20 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 ## Required Deliverables (per PDF instructions)
 
 ### 1. Problem Statement and Significance
+
 - Real-world problem: website traffic / page view forecasting
 - Time granularity: **daily**
 - Objectives: trend identification, seasonal pattern study, correlation analysis, forecasting
 - Data: Wikipedia pageviews 2015–2016 via Wikimedia REST API, stored in MongoDB (`wikipedia_traffic.pageviews`)
 
 ### 2. Data Collection (proof required)
+
 - Source: Wikimedia REST API (secondary source — research repository)
 - Data is time-ordered (daily), with sufficient observations for trend and forecasting
 - Fields: `article`, `project`, `access`, `agent`, `date`, `views`, `year`, `month`, `day`, `day_of_week`, `week`
 
 ### 3. Time Series Analysis Methods (all implemented in `src/analysis.py`)
+
 - **Moving averages:** 7-day, 30-day, 90-day (`02_moving_averages.png`)
 - **Semi-averages:** trend line from two halves of the series (also in `02_moving_averages.png`)
 - **STL Decomposition:** Trend + Seasonal + Residual components (`03_stl_decomposition.png`)
@@ -43,10 +46,12 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 - **De-trending / De-seasonalization:** via differencing and STL decomposition
 
 ### 4. Tool Selection
+
 - **Python** with: `statsmodels`, `scikit-learn`, `polars`, `pandas`, `matplotlib`
 - **FastAPI** backend, **React + Vite** frontend, **MongoDB** database
 
 ### 5. Forecasting Models (all implemented in `src/forecasting.py`)
+
 - **Linear Trend Regression** (trend projection) → `07_linear_trend.png`
 - **Holt-Winters Exponential Smoothing** (additive trend + additive seasonal, period=7) → `08_holt_winters.png`
 - **ARIMA(2, d, 2)** → `09_arima.png`
@@ -56,10 +61,12 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 - Test set: **60 days** held out (configurable via `--test-days`)
 
 ### 6. Forecasting Accuracy Metrics (8 metrics, all in `src/forecasting.py`)
+
 - MAE, MSE, RMSE, MAPE (%), SMAPE (%), WAPE (%), R², Bias
 - Best model selected by lowest MAPE
 
 ### 7. Conclusions and Learning Reflection
+
 - Summary of findings should cover: practical relevance, insights from modelling, limitations, scope for improvement
 - This section lives in the written report (not in the code)
 
@@ -68,27 +75,30 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 ## Project Architecture
 
 ### Key Files
-| File | Role |
-|------|------|
-| `main.py` | Root pipeline orchestrator (CLI entry point) |
-| `src/analysis.py` | Time series analysis — plots + stationarity tests |
-| `src/forecasting.py` | Model training, evaluation, future forecast |
-| `backend/main.py` | FastAPI server (API + SSE pipeline streaming) |
-| `data/data_loader_mongo.py` | MongoDB data access (Polars-based) |
-| `data/mongo_setup.py` | Index definitions |
-| `frontend/src/` | React + Vite dashboard |
+
+| File                        | Role                                              |
+| --------------------------- | ------------------------------------------------- |
+| `main.py`                   | Root pipeline orchestrator (CLI entry point)      |
+| `src/analysis.py`           | Time series analysis — plots + stationarity tests |
+| `src/forecasting.py`        | Model training, evaluation, future forecast       |
+| `backend/main.py`           | FastAPI server (API + SSE pipeline streaming)     |
+| `data/data_loader_mongo.py` | MongoDB data access (Polars-based)                |
+| `data/mongo_setup.py`       | Index definitions                                 |
+| `frontend/src/`             | React + Vite dashboard                            |
 
 ### Frontend Pages
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | Overview | Traffic summary, language breakdown, access type |
-| `/explore` | Explore | Interactive time-series chart with brush zoom |
-| `/search` | Search | MongoDB article search (partial/fuzzy, space=underscore) |
-| `/leaderboard` | Leaderboard | Top N articles by total views |
-| `/models` | Models | Pipeline runner + model comparison + analysis plots |
-| `/database` | Database | MongoDB schema, indexes, collection stats |
+
+| Route          | Page        | Description                                              |
+| -------------- | ----------- | -------------------------------------------------------- |
+| `/`            | Overview    | Traffic summary, language breakdown, access type         |
+| `/explore`     | Explore     | Interactive time-series chart with brush zoom            |
+| `/search`      | Search      | MongoDB article search (partial/fuzzy, space=underscore) |
+| `/leaderboard` | Leaderboard | Top N articles by total views                            |
+| `/models`      | Models      | Pipeline runner + model comparison + analysis plots      |
+| `/database`    | Database    | MongoDB schema, indexes, collection stats                |
 
 ### Output Files
+
 ```
 outputs/
 ├── plots/
@@ -110,20 +120,21 @@ outputs/
 ```
 
 ### API Endpoints
-| Endpoint | Description |
-|----------|-------------|
-| `GET /stats` | Collection stats |
-| `GET /top-articles` | Top N articles |
-| `GET /article` | Single article timeseries |
-| `GET /search?q=&project=` | Fuzzy article search (space matches underscore) |
-| `GET /aggregated-daily` | Aggregated daily traffic |
-| `GET /project-breakdown` | Views by Wikipedia language |
-| `GET /access-breakdown` | Views by access type |
-| `GET /precomputed/model-comparison` | All 4 model metrics |
-| `GET /precomputed/forecast?article=` | Best model forecast + future values |
-| `GET /precomputed/analysis` | ADF/KPSS results + differencing order |
-| `GET /plots/{filename}` | Serve analysis/forecast PNG plots |
-| `GET /run-pipeline` | SSE stream — runs `main.py` subprocess |
+
+| Endpoint                             | Description                                     |
+| ------------------------------------ | ----------------------------------------------- |
+| `GET /stats`                         | Collection stats                                |
+| `GET /top-articles`                  | Top N articles                                  |
+| `GET /article`                       | Single article timeseries                       |
+| `GET /search?q=&project=`            | Fuzzy article search (space matches underscore) |
+| `GET /aggregated-daily`              | Aggregated daily traffic                        |
+| `GET /project-breakdown`             | Views by Wikipedia language                     |
+| `GET /access-breakdown`              | Views by access type                            |
+| `GET /precomputed/model-comparison`  | All 4 model metrics                             |
+| `GET /precomputed/forecast?article=` | Best model forecast + future values             |
+| `GET /precomputed/analysis`          | ADF/KPSS results + differencing order           |
+| `GET /plots/{filename}`              | Serve analysis/forecast PNG plots               |
+| `GET /run-pipeline`                  | SSE stream — runs `main.py` subprocess          |
 
 ---
 
