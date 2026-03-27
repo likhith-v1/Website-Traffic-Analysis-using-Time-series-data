@@ -151,7 +151,10 @@ python main.py --aggregated
 ## Key Design Decisions
 
 - **Search fix:** `re.escape(query)` then replace spaces with `[_ ]` so "donald trump" matches "donald_trump" in MongoDB
-- **Theme system:** CSS variables in `:root` + `[data-theme='light']` / `[data-theme='dark']`; `applyTheme()` in `App.jsx` handles auto/light/dark; persisted in `localStorage`
+- **Theme system:** `applyTheme()` in `App.jsx` sets `document.documentElement.dataset.theme = 'dark'|'light'`; Tailwind's `darkMode: ["selector", "[data-theme='dark']"]` activates all `dark:` utilities; persisted in `localStorage`
 - **Pipeline streaming:** FastAPI SSE endpoint spawns `python main.py` as a subprocess and streams stdout line-by-line to the frontend via `EventSource`
 - **Analysis results:** Saved to `outputs/precomputed/analysis_results.json` after each full pipeline run (not saved when `--skip-analysis` is used)
-- **Fonts:** Bricolage Grotesque (display), Space Mono (mono), Sora (body)
+- **Fonts:** Bricolage Grotesque (display, `font-display`), Space Mono (mono, `font-mono`), Sora (body, `font-body`) — configured in `tailwind.config.js`
+- **Styling:** Fully Tailwind CSS (no custom CSS classes). Chart colors use CSS variables (`--chart-1` through `--chart-8`, `--chart-line`, `--chart-tick`) defined in `index.css` for Recharts compatibility
+- **Utility:** `cx()` helper from `src/lib/utils.js` (clsx + tailwind-merge) used in all components for conditional class composition
+- **Design tokens:** Gray-neutral palette with blue accent — sidebar `bg-gray-50 dark:bg-gray-925`, cards `bg-white dark:bg-gray-950`, borders `border-gray-200 dark:border-gray-800`

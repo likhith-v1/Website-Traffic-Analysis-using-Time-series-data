@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import { searchArticles } from '../api/client'
 import PageHeader from '../components/PageHeader'
 import SurfaceCard from '../components/SurfaceCard'
+import { cx } from '../lib/utils'
 
 const fmt = n =>
   n >= 1e9 ? (n / 1e9).toFixed(2) + 'B'
@@ -38,57 +39,62 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="page-shell">
+    <div className="p-6 lg:p-8">
       <PageHeader
         eyebrow="Lookup"
         title="Search"
         subtitle="Find articles in the dataset and jump straight into exploration without digging through raw records."
       />
 
-      <div className="toolbar-card" style={{ marginBottom: 16 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-4 py-3 mb-5 dark:border-gray-800 dark:bg-gray-950">
+        <div className="relative flex-1" style={{ minWidth: 200 }}>
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
-            value={q} onChange={e => setQ(e.target.value)}
+            value={q}
+            onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
-            onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
-            onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
             placeholder="Search articles… (e.g. Python, Einstein, Football)"
-            style={{
-              width: '100%', padding: '11px 14px 11px 38px',
-              background: 'var(--surface)', border: '1px solid var(--border)',
-              borderRadius: 9, color: 'var(--text)',
-              fontFamily: 'var(--font-body)', fontSize: 13, outline: 'none',
-              fontWeight: 300,
-              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-            }}
+            className={cx(
+              'w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3',
+              'font-body text-sm text-gray-900 placeholder-gray-400',
+              'outline-none transition',
+              'focus:border-blue-500 focus:ring-2 focus:ring-blue-200',
+              'dark:border-gray-800 dark:bg-gray-950 dark:text-gray-50 dark:placeholder-gray-500',
+              'dark:focus:border-blue-700 dark:focus:ring-blue-700/30',
+            )}
           />
         </div>
-        <select value={project} onChange={e => setProject(e.target.value)} style={{
-          padding: '11px 14px', background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 9, color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11,
-          outline: 'none', letterSpacing: '0.04em',
-        }}>
+        <select
+          value={project}
+          onChange={e => setProject(e.target.value)}
+          className={cx(
+            'rounded-md border border-gray-200 bg-white px-3 py-2',
+            'font-mono text-xs text-gray-700',
+            'outline-none transition focus:border-blue-500',
+            'dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300',
+          )}
+        >
           {PROJECTS.map(p => <option key={p} value={p}>{p.replace('.wikipedia.org', '')}</option>)}
         </select>
         <button
           onClick={search}
-          onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
-          onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-          style={{
-            padding: '11px 22px', background: 'var(--accent)', color: 'white',
-            border: 'none', borderRadius: 9,
-            fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13,
-            cursor: 'pointer', letterSpacing: '0.01em',
-            transition: 'opacity 0.15s ease',
-          }}
-        >Search</button>
+          className="rounded-md bg-blue-500 px-5 py-2 font-display text-sm font-semibold text-white shadow-sm hover:bg-blue-600 transition-colors"
+        >
+          Search
+        </button>
       </div>
 
-      {loading && <div className="empty-state">Querying MongoDB…</div>}
+      {loading && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-16 text-center font-mono text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900/50">
+          Querying MongoDB…
+        </div>
+      )}
 
       {!loading && searched && results.length === 0 && (
-        <div className="empty-state">{error || `No results found for "${q}"`}</div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-16 text-center font-mono text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900/50">
+          {error || `No results found for "${q}"`}
+        </div>
       )}
 
       {!loading && results.length > 0 && (
@@ -96,36 +102,32 @@ export default function SearchPage() {
           title="Search Results"
           subtitle={`${results.length} matching articles ranked by total views.`}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {results.map((r, i) => (
               <div
                 key={i}
                 onClick={() => navigate(`/explore?article=${r.article}`)}
-                className="animate-fade-up"
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'rgba(255,255,255,0.015)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '14px 18px', cursor: 'pointer',
-                  transition: 'border-color 0.15s, background 0.15s',
-                  animationDelay: `${i * 25}ms`,
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-soft)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'rgba(255,255,255,0.015)' }}
+                className={cx(
+                  'flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 cursor-pointer',
+                  'transition-colors hover:border-blue-200 hover:bg-blue-50/30',
+                  'dark:border-gray-800 dark:bg-gray-950 dark:hover:border-blue-900/50 dark:hover:bg-blue-500/5',
+                  'animate-fade-up',
+                )}
+                style={{ animationDelay: `${i * 25}ms` }}
               >
                 <div>
-                  <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500 }}>
+                  <div className="font-body text-sm font-medium text-gray-900 dark:text-gray-50">
                     {r.article.replace(/_/g, ' ')}
                   </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', marginTop: 3, letterSpacing: '0.06em' }}>
+                  <div className="font-mono text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 tracking-wide">
                     {project}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--accent)' }}>
+                <div className="text-right">
+                  <div className="font-display font-bold text-xl text-blue-600 dark:text-blue-400">
                     {fmt(r.total_views)}
                   </div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--muted)', letterSpacing: '0.08em' }}>
+                  <div className="font-mono text-[9px] text-gray-400 dark:text-gray-500 tracking-wider">
                     total views
                   </div>
                 </div>

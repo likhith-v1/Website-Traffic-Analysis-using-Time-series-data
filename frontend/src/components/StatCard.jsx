@@ -1,39 +1,30 @@
+import { cx } from '../lib/utils'
+
 export default function StatCard({ label, value, sub, accent = false, delay = 0 }) {
   return (
     <div
-      className={`stat-card animate-fade-up ${accent ? 'stat-card-accent' : ''}`}
+      className={cx(
+        'rounded-lg border bg-white p-4 shadow-sm animate-fade-up',
+        'dark:bg-gray-950',
+        accent
+          ? 'border-blue-200 dark:border-blue-900/50'
+          : 'border-gray-200 dark:border-gray-800',
+      )}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 9,
-        color: 'var(--muted)',
-        letterSpacing: '0.16em',
-        textTransform: 'uppercase',
-        marginBottom: 12,
-      }}>
+      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400 mb-3">
         {label}
-      </div>
-      <div style={{
-        fontFamily: 'var(--font-display)',
-        fontWeight: 700,
-        fontSize: 28,
-        color: accent ? 'var(--accent)' : 'var(--text)',
-        lineHeight: 1,
-        letterSpacing: '-0.02em',
-      }}>
+      </p>
+      <p className={cx(
+        'font-display text-[26px] font-bold leading-none tracking-tight',
+        accent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-50',
+      )}>
         {value}
-      </div>
+      </p>
       {sub && (
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontSize: 11,
-          color: 'var(--muted)',
-          marginTop: 8,
-          fontWeight: 300,
-        }}>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 font-body">
           {sub}
-        </div>
+        </p>
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { getStats, getAggregatedDaily, getProjectBreakdown, getAccessBreakdown }
 import PageHeader from '../components/PageHeader'
 import SurfaceCard from '../components/SurfaceCard'
 import StatCard from '../components/StatCard'
+import { cx } from '../lib/utils'
 
 const fmt = n =>
   n >= 1e9 ? (n / 1e9).toFixed(1) + 'B'
@@ -12,14 +13,8 @@ const fmt = n =>
   : n
 
 const COLORS = [
-  'var(--chart-palette-1)',
-  'var(--chart-palette-2)',
-  'var(--chart-palette-3)',
-  'var(--chart-palette-4)',
-  'var(--chart-palette-5)',
-  'var(--chart-palette-6)',
-  'var(--chart-palette-7)',
-  'var(--chart-palette-8)',
+  'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)',
+  'var(--chart-5)', 'var(--chart-6)', 'var(--chart-7)', 'var(--chart-8)',
 ]
 
 export default function Overview() {
@@ -58,24 +53,16 @@ export default function Overview() {
     }).finally(() => setLoading(false))
   }, [])
 
-  const tooltipStyle = {
-    background: 'var(--tooltip-bg)',
-    border: '1px solid var(--border)',
-    color: 'var(--tooltip-text)',
-    borderRadius: 8,
-    fontFamily: 'var(--font-mono)',
-    fontSize: 11,
-  }
-
   return (
-    <div className="page-shell">
+    <div className="p-6 lg:p-8">
       <PageHeader
         eyebrow="Overview"
         title="Traffic Overview"
         subtitle="A cleaner view of the dataset, the platform mix, and the overall movement of pageviews from July 2015 to December 2016."
       />
 
-      <div className="overview-hero-layout">
+      {/* Hero layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-5 mb-5">
         <SurfaceCard
           title="Monthly English Wikipedia Views"
           subtitle="A smoothed, high-level read of how aggregate attention changed over time."
@@ -86,60 +73,68 @@ export default function Overview() {
               <AreaChart data={daily}>
                 <defs>
                   <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="var(--chart-line)" stopOpacity={0.3} />
+                    <stop offset="5%"  stopColor="var(--chart-line)" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="var(--chart-line)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tick={{ fill: 'var(--chart-tick)', fontSize: 10 }} />
-                <YAxis tickFormatter={fmt} tick={{ fill: 'var(--chart-tick)', fontSize: 10 }} width={58} />
-                <Tooltip formatter={v => [fmt(v), 'Views']} contentStyle={tooltipStyle} />
+                <XAxis dataKey="date" />
+                <YAxis tickFormatter={fmt} width={58} />
+                <Tooltip formatter={v => [fmt(v), 'Views']} />
                 <Area type="monotone" dataKey="views" stroke="var(--chart-line)" strokeWidth={1.8} fill="url(#grad)" />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className={`empty-state ${loading ? 'empty-state-loading' : ''}`} style={{ minHeight: 290, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className={cx(
+              'flex min-h-[290px] items-center justify-center rounded-lg border',
+              'border-gray-200 bg-gray-50 font-mono text-xs text-gray-400',
+              'dark:border-gray-800 dark:bg-gray-900/50',
+            )}>
               {loading ? 'Loading traffic chart…' : dailyError || 'No chart data available'}
             </div>
           )}
         </SurfaceCard>
 
         <SurfaceCard title="At a Glance" subtitle="Core dataset metrics in a compact summary panel." className="animate-fade-up">
-          <div className="overview-stat-grid">
-            <StatCard label="Total Documents" value={stats ? fmt(stats.documents) : '…'} accent delay={0} sub="in MongoDB" />
-            <StatCard label="Storage Size" value={stats ? stats.size_gb + 'GB' : '…'} delay={40} sub="on disk" />
-            <StatCard label="Indexes" value={stats ? stats.indexes : '…'} delay={80} sub="for fast queries" />
-            <StatCard label="Wiki Languages" value={stats ? stats.projects : '…'} delay={120} sub="language projects" />
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="Total Documents" value={stats ? fmt(stats.documents) : '…'} accent delay={0}  sub="in MongoDB" />
+            <StatCard label="Storage Size"    value={stats ? stats.size_gb + 'GB' : '…'} delay={40}  sub="on disk" />
+            <StatCard label="Indexes"         value={stats ? stats.indexes : '…'}         delay={80}  sub="for fast queries" />
+            <StatCard label="Wiki Languages"  value={stats ? stats.projects : '…'}        delay={120} sub="language projects" />
           </div>
         </SurfaceCard>
       </div>
 
-      <div className="two-column-grid">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <SurfaceCard title="Views by Language" subtitle="The largest Wikipedia language projects in the dataset." className="animate-fade-up">
           {projects.length > 0 ? (
-            <div className="overview-split-card">
+            <div className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-5 items-center">
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie data={projects} dataKey="total_views" nameKey="project" cx="50%" cy="50%" outerRadius={78}
                     label={({ project }) => project?.replace('.wikipedia.org', '')}>
                     {projects.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={v => [fmt(v), 'Views']} contentStyle={tooltipStyle} />
+                  <Tooltip formatter={v => [fmt(v), 'Views']} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="overview-legend-list">
+              <div className="flex flex-col gap-2">
                 {projects.map((project, i) => (
-                  <div key={project.project} className="overview-legend-item">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <span className="overview-legend-dot" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span>{project.project.replace('.wikipedia.org', '')}</span>
+                  <div key={project.project} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-1.5 font-mono text-[11px] hover:border-gray-300 transition-colors dark:border-gray-800 dark:hover:border-gray-700">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block size-2 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className="text-gray-700 dark:text-gray-300">{project.project.replace('.wikipedia.org', '')}</span>
                     </div>
-                    <span style={{ color: 'var(--muted)' }}>{fmt(project.total_views)}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{fmt(project.total_views)}</span>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className={`empty-state ${loading ? 'empty-state-loading' : ''}`} style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className={cx(
+              'flex min-h-[220px] items-center justify-center rounded-lg border',
+              'border-gray-200 bg-gray-50 font-mono text-xs text-gray-400',
+              'dark:border-gray-800 dark:bg-gray-900/50',
+            )}>
               {loading ? 'Loading language breakdown…' : breakdownError || 'No data available'}
             </div>
           )}
@@ -147,25 +142,32 @@ export default function Overview() {
 
         <SurfaceCard title="Access Type Breakdown" subtitle="How readers reached Wikipedia across desktop and mobile access modes." className="animate-fade-up">
           {access.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+            <div className="flex flex-col gap-4 mt-2">
               {access.map((a, i) => {
                 const total = access.reduce((s, x) => s + x.total_views, 0)
                 const pct = ((a.total_views / total) * 100).toFixed(1)
                 return (
                   <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>{a.access}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: COLORS[i] }}>{pct}%</span>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="font-mono text-[11px] text-gray-900 dark:text-gray-50">{a.access}</span>
+                      <span className="font-mono text-[11px]" style={{ color: COLORS[i] }}>{pct}%</span>
                     </div>
-                    <div style={{ height: 6, background: 'var(--border)', borderRadius: 999 }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: COLORS[i], borderRadius: 999, transition: 'width 1.2s cubic-bezier(0.16,1,0.3,1)' }} />
+                    <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-800">
+                      <div
+                        className="h-full rounded-full transition-[width] duration-700"
+                        style={{ width: `${pct}%`, background: COLORS[i] }}
+                      />
                     </div>
                   </div>
                 )
               })}
             </div>
           ) : (
-            <div className={`empty-state ${loading ? 'empty-state-loading' : ''}`} style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className={cx(
+              'flex min-h-[220px] items-center justify-center rounded-lg border',
+              'border-gray-200 bg-gray-50 font-mono text-xs text-gray-400',
+              'dark:border-gray-800 dark:bg-gray-900/50',
+            )}>
               {loading ? 'Loading access breakdown…' : breakdownError || 'No data available'}
             </div>
           )}
