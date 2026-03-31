@@ -3,7 +3,8 @@
 ## Assignment Overview
 
 **Course:** Time Series Analysis and Forecasting Techniques (23BSCSMA61)
-**Branch:** CSE: AIMLA, B, C & D | **Semester:** VI
+**Student:** Likhith | **USN:** 23BTRCL257
+**Branch:** CSE: AIML-D | **Semester:** VI
 **Activity:** Experiential Learning Activity — 15 Marks (Group Activity)
 **Deadline:** On or before **March 30, 2026** (late submissions not accepted)
 **Group size:** Maximum 6 students per group (individual submissions permitted)

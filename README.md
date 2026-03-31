@@ -1,5 +1,10 @@
 # Wikipedia Traffic Analysis Using Time Series Data
 
+**Student:** Likhith
+**USN:** 23BTRCL257
+**Section:** AIML-D
+**Course:** Time Series Analysis and Forecasting Techniques (23BSCSMA61) | Semester VI
+
 This project is a small full-stack data analysis app built around Wikipedia pageview data.
 
 It takes raw traffic data, stores it in MongoDB, analyzes it with Python, generates forecasts, and shows everything in a dashboard where you can explore trends, compare models, and inspect the dataset more comfortably.
