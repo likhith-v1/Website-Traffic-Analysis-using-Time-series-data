@@ -194,6 +194,23 @@ Generate the precomputed forecast files first:
 python3 main.py --article Main_Page
 ```
 
+## Results
+
+### Model Comparison (Main_Page — 60-day test set)
+
+| Model | MAE | RMSE | MAPE (%) | SMAPE (%) | WAPE (%) | R² | Bias |
+|---|---|---|---|---|---|---|---|
+| Linear Trend | 8,101,490 | 8,269,291 | 51.84 | 40.50 | 50.14 | -23.59 | 8,101,490 |
+| Holt-Winters | 2,568,147 | 3,160,792 | 15.73 | 17.85 | 15.89 | -2.59 | -2,513,005 |
+| ARIMA(2, 0, 2) | 4,080,373 | 4,546,259 | 26.54 | 22.63 | 25.25 | -6.43 | 4,050,244 |
+| **SARIMA(1, 0, 1)×(1, 1, 0, 7)** | **837,278** | **1,144,400** | **5.39** | **5.26** | **5.18** | **0.529** | **138,765** |
+
+**Best model: SARIMA(1, 0, 1)×(1, 1, 0, 7)** — selected by lowest MAPE (5.39%).
+
+SARIMA outperforms the other models significantly because it captures the weekly seasonality (period = 7) in Wikipedia traffic. It is the only model with a positive R² (0.529), meaning it actually explains variance in the data rather than performing worse than a mean baseline.
+
+---
+
 ## In short
 
 This repo is basically a data project plus a dashboard:
