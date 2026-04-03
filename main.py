@@ -8,11 +8,19 @@ This script keeps the happy path simple:
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 from src.analysis import run as run_analysis
 from src.forecasting import run as run_forecasting
@@ -58,9 +66,9 @@ def main() -> None:
     d = args.d
 
     if not args.skip_analysis:
-        print("\n" + "=" * 60)
-        print("Step 1: Time Series Analysis")
-        print("=" * 60)
+        log.info("=" * 60)
+        log.info("Step 1: Time Series Analysis")
+        log.info("=" * 60)
         _, d_detected, summary = run_analysis(
             article=args.article,
             project=args.project,
@@ -72,15 +80,15 @@ def main() -> None:
         analysis_path = ROOT / "outputs" / "precomputed" / "analysis_results.json"
         analysis_path.parent.mkdir(parents=True, exist_ok=True)
         analysis_path.write_text(json.dumps(summary, indent=2, default=str))
-        print(f"Saved JSON -> analysis_results.json")
+        log.info("Saved JSON -> analysis_results.json")
     else:
         if d is None:
             d = 1
-            print(f"Skipping analysis. Using d={d}.")
+        log.info("Skipping analysis. Using d=%d.", d)
 
-    print("\n" + "=" * 60)
-    print("Step 2: Forecasting")
-    print("=" * 60)
+    log.info("=" * 60)
+    log.info("Step 2: Forecasting")
+    log.info("=" * 60)
     run_forecasting(
         article=args.article,
         project=args.project,
@@ -91,12 +99,12 @@ def main() -> None:
         use_aggregated=args.aggregated,
     )
 
-    print("\n" + "=" * 60)
-    print("Pipeline complete")
-    print("Plots       -> outputs/plots/")
-    print("Precomputed -> outputs/precomputed/")
-    print("Dashboard   -> http://localhost:5173/models")
-    print("=" * 60 + "\n")
+    log.info("=" * 60)
+    log.info("Pipeline complete")
+    log.info("Plots       -> outputs/plots/")
+    log.info("Precomputed -> outputs/precomputed/")
+    log.info("Dashboard   -> http://localhost:5173/models")
+    log.info("=" * 60)
 
 
 if __name__ == "__main__":

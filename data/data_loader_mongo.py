@@ -1,26 +1,52 @@
 """Load and prepare Wikipedia traffic data with Polars.
 
-The helpers in this file are shared by the CLI pipeline and the FastAPI app.
-
-MongoDB connection
-------------------
-A single ``MongoClient`` instance is created at module import time and reused
-across all calls.  This avoids the overhead of opening a new TCP connection on
-every request, which was the original behaviour (``get_collection`` called
-``MongoClient(...)`` unconditionally each time).
-
-You can still override the target database/collection via environment variables:
-
-    MONGO_URI              – default: mongodb://localhost:27017/
-    MONGO_DB_NAME          – default: wikipedia_traffic
-    MONGO_COLLECTION_NAME  – default: pageviews
+Shared by the CLI pipeline and the FastAPI app.
+Override DB/collection via MONGO_URI, MONGO_DB_NAME, MONGO_COLLECTION_NAME env vars.
 """
 
+import logging
 import os
 import re
 
 import polars as pl
+
+log = logging.getLogger(__name__)
 from pymongo import MongoClient
+
+# -- Article blocklist --------------------------------------------------------
+
+# Wikipedia namespace prefixes (excluded from article queries)
+_NS_PREFIXES = [
+    "Special", "Wikipedia", "User", "File", "Help",
+    "Category", "Talk", "Template", "Portal", "Draft",
+    "MediaWiki", "Module", "Book", "WP",
+]
+
+# matches "Special:Search", "Wikipedia:About", etc.
+_NS_REGEX = "^(" + "|".join(re.escape(p) for p in _NS_PREFIXES) + "):"
+
+# Adult content titles known to appear in this dataset
+_ADULT_TERMS = [
+    r"[Pp]orn", r"[Xx][Xx][Xx]", r"[Xx]video", r"[Pp]ornhub",
+    r"[Xx]hamster", r"[Xx]nxx", r"[Rr]edtube", r"[Yy]ouporn",
+    r"[Bb]razzers", r"[Pp]layboy", r"[Pp]enthaus", r"[Pp]enthouse",
+    r"[Ee]rotic", r"[Hh]entai", r"[Ss]ex[_ ]video", r"[Ff]uck",
+    r"[Nn]aked[_ ]",
+]
+
+
+def _article_filter_clause() -> dict:
+    """Return a MongoDB $match clause that excludes namespace pages and adult content."""
+    blocked_pattern = "|".join([_NS_REGEX] + _ADULT_TERMS)
+    return {"article": {"$not": {"$regex": blocked_pattern, "$options": "i"}}}
+
+
+def _filter_articles_df(df: pl.DataFrame) -> pl.DataFrame:
+    """Drop namespace and adult-content rows from a Polars DataFrame (post-fetch safety net)."""
+    blocked = "|".join([_NS_REGEX] + _ADULT_TERMS)
+    return df.filter(
+        ~pl.col("article").str.contains(f"(?i)(?:{blocked})")
+    )
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = os.getenv("MONGO_DB_NAME", "wikipedia_traffic")
@@ -43,9 +69,7 @@ def get_collection():
     return _get_client()[DB_NAME][COL_NAME]
 
 
-# ---------------------------------------------------------------------------
-# Data loaders
-# ---------------------------------------------------------------------------
+# -- Data loaders -------------------------------------------------------------
 
 def load_article(
     article: str,
@@ -70,7 +94,7 @@ def load_article(
         .with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
         .sort("date")
     )
-    print(f"Loaded {len(df)} daily records for '{article}' [{project}]")
+    log.info("Loaded %d daily records for '%s' [%s]", len(df), article, project)
     return df
 
 
@@ -112,7 +136,7 @@ def load_aggregated_daily(
         .with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
         .sort("date")
     )
-    print(f"Loaded {len(df)} aggregated daily rows [{project} / {access}]")
+    log.info("Loaded %d aggregated daily rows [%s / %s]", len(df), project, access)
     return df
 
 
@@ -121,28 +145,20 @@ def load_top_articles(
     project: str = "en.wikipedia.org",
     access: str = "all-access",
 ) -> pl.DataFrame:
-    """Return top N articles ranked by total views."""
+    """Return top N articles ranked by total views, excluding namespace and adult-content pages."""
     col = get_collection()
+    match_clause = {"project": project, "access": access}
+    match_clause.update(_article_filter_clause())
     pipeline = [
-        {"$match": {"project": project, "access": access}},
-        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
+        {"$match": match_clause},
+        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}, "project": {"$first": "$project"}}},
         {"$sort": {"total_views": -1}},
         {"$limit": n},
     ]
     df = pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "article"})
-    print(f"Top {n} articles:\n{df.head(10)}")
+    df = _filter_articles_df(df)  # Polars-side safety net
+    log.debug("Top %d articles loaded", n)
     return df
-
-
-def load_by_project_breakdown(date: str = "2016-01-01") -> pl.DataFrame:
-    """Views by project for a specific date."""
-    col = get_collection()
-    pipeline = [
-        {"$match": {"date": date}},
-        {"$group": {"_id": "$project", "total_views": {"$sum": "$views"}}},
-        {"$sort": {"total_views": -1}},
-    ]
-    return pl.DataFrame(list(col.aggregate(pipeline))).rename({"_id": "project"})
 
 
 def load_project_breakdown(project_limit: int | None = None) -> pl.DataFrame:
@@ -167,30 +183,77 @@ def load_access_breakdown() -> pl.DataFrame:
     return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "access"})
 
 
+SEARCH_COL_NAME = "article_search"
+
+# Cached boolean: None = not yet checked, True/False = result of list_collection_names()
+_search_col_exists: bool | None = None
+
+
+def _has_search_collection() -> bool:
+    """Return True if the article_search collection exists; result is cached after first check."""
+    global _search_col_exists
+    if _search_col_exists is None:
+        db = _get_client()[DB_NAME]
+        _search_col_exists = SEARCH_COL_NAME in db.list_collection_names()
+    return _search_col_exists
+
+
 def search_articles(
     query: str,
     project: str = "en.wikipedia.org",
     limit: int = 20,
 ) -> pl.DataFrame:
-    """Search articles by name and rank them by total views."""
-    # Escape regex metacharacters, then treat spaces as [_ ] so
-    # "donald trump" matches "donald_trump" (MediaWiki canonical form).
-    safe_query = re.escape(query)
-    safe_query = safe_query.replace(r"\ ", "[_ ]").replace(" ", "[_ ]")
-
+    """Search articles with partial matching, preferring article_search when available."""
+    client = _get_client()
+    db = client[DB_NAME]
     col = get_collection()
-    pipeline = [
-        {
-            "$match": {
-                "project": project,
-                "article": {"$regex": safe_query, "$options": "i"},
-            }
-        },
-        {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}}},
-        {"$sort": {"total_views": -1}},
-        {"$limit": limit},
-    ]
-    return pl.DataFrame(list(col.aggregate(pipeline, allowDiskUse=True))).rename({"_id": "article"})
+    blocked_pattern = "|".join([_NS_REGEX] + _ADULT_TERMS)
+
+    normalized_query = query.strip().replace("_", " ")
+    if not normalized_query:
+        return pl.DataFrame(schema={"article": pl.Utf8, "total_views": pl.Int64, "project": pl.Utf8})
+
+    word_pattern = re.escape(normalized_query)
+    article_pattern = word_pattern.replace(r"\ ", r"[_ ]")
+
+    docs: list[dict]
+    if _has_search_collection():
+        try:
+            search_col = db[SEARCH_COL_NAME]
+            docs = list(
+                search_col
+                .find(
+                    {
+                        "project": project,
+                        "article_words": {"$regex": word_pattern, "$options": "i"},
+                        "article": {"$not": {"$regex": blocked_pattern, "$options": "i"}},
+                    },
+                    {"_id": 0, "article": 1, "total_views": 1, "project": 1},
+                )
+                .sort("total_views", -1)
+                .limit(limit)
+            )
+        except Exception:
+            docs = []
+    else:
+        docs = []
+
+    if not docs:
+        pipeline = [
+            {"$match": {"project": project, "article": {"$regex": article_pattern, "$options": "i"}}},
+            {"$match": _article_filter_clause()},
+            {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}, "project": {"$first": "$project"}}},
+            {"$sort": {"total_views": -1}},
+            {"$limit": limit},
+        ]
+        docs = list(col.aggregate(pipeline, allowDiskUse=True))
+        if docs:
+            docs = pl.DataFrame(docs).rename({"_id": "article"}).to_dicts()
+
+    if not docs:
+        return pl.DataFrame(schema={"article": pl.Utf8, "total_views": pl.Int64, "project": pl.Utf8})
+    df = pl.DataFrame(docs)
+    return _filter_articles_df(df)
 
 
 def load_stats() -> dict:
@@ -215,19 +278,7 @@ def load_stats() -> dict:
     }
 
 
-def load_from_jsonl(filepath: str, article_filter: str | None = None) -> pl.DataFrame:
-    """Load JSONL directly with Polars, without using MongoDB."""
-    df = pl.read_ndjson(filepath)
-    df = df.with_columns(pl.col("date").str.to_date("%Y-%m-%d")).sort("date")
-    if article_filter:
-        df = df.filter(pl.col("article").str.contains(article_filter))
-    print(f"Loaded {len(df):,} rows from {filepath}")
-    return df
-
-
-# ---------------------------------------------------------------------------
-# Preprocessing helpers
-# ---------------------------------------------------------------------------
+# -- Preprocessing helpers ----------------------------------------------------
 
 def fill_missing_dates(
     df: pl.DataFrame,
@@ -241,33 +292,5 @@ def fill_missing_dates(
         .to_frame()
     )
     df = full.join(df, on=date_col, how="left").with_columns(pl.col(views_col).fill_null(0))
-    print(f"Filled missing dates -> {len(df)} total rows")
+    log.debug("Filled missing dates -> %d total rows", len(df))
     return df
-
-
-def add_time_features(df: pl.DataFrame, date_col: str = "date") -> pl.DataFrame:
-    """Add simple calendar features for analysis and modeling."""
-    return df.with_columns(
-        [
-            pl.col(date_col).dt.year().alias("year"),
-            pl.col(date_col).dt.month().alias("month"),
-            pl.col(date_col).dt.day().alias("day"),
-            pl.col(date_col).dt.weekday().alias("day_of_week"),
-            pl.col(date_col).dt.week().alias("week"),
-            pl.col(date_col).dt.quarter().alias("quarter"),
-            (pl.col(date_col).dt.weekday() >= 5).cast(pl.Int8).alias("is_weekend"),
-        ]
-    )
-
-
-def split_train_test(
-    df: pl.DataFrame,
-    views_col: str = "views",
-    test_days: int = 60,
-) -> tuple[pl.Series, pl.Series]:
-    """Split into train/test by last N rows."""
-    series = df[views_col]
-    train = series[:-test_days]
-    test = series[-test_days:]
-    print(f"Train: {len(train)} days | Test: {len(test)} days")
-    return train, test

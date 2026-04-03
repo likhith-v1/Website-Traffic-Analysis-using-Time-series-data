@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import warnings
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -30,40 +33,7 @@ PRECOMP_DIR.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT))
 
 from data.data_loader_mongo import fill_missing_dates, load_aggregated_daily, load_article
-
-# ---------------------------------------------------------------------------
-# Theme colour palettes — kept in sync with frontend CSS variables
-# ---------------------------------------------------------------------------
-THEMES: dict[str, dict] = {
-    "dark": {
-        "fig_bg":    "#0f172a",
-        "ax_bg":     "#111827",
-        "text":      "#e5e7eb",
-        "muted":     "#94a3b8",
-        "spine":     "#1f2937",
-        "train":     "#94a3b8",
-        "actual":    "#38bdf8",
-        "forecast":  "#818cf8",
-        "future":    "#34d399",
-        "palette":   ["#818cf8", "#38bdf8", "#c084fc", "#fb923c"],
-        "legend_bg": "#1e2433",
-        "edge":      "#0f172a",
-    },
-    "light": {
-        "fig_bg":    "#f7f8fa",
-        "ax_bg":     "#ffffff",
-        "text":      "#111827",
-        "muted":     "#6b7280",
-        "spine":     "#d1d5db",
-        "train":     "#9ca3af",
-        "actual":    "#0891b2",
-        "forecast":  "#4338ca",
-        "future":    "#059669",
-        "palette":   ["#4338ca", "#0891b2", "#7c3aed", "#ea580c"],
-        "legend_bg": "#f0f2f6",
-        "edge":      "#f7f8fa",
-    },
-}
+from src.plot_themes import THEMES
 
 
 def to_pandas_series(df, date_col: str = "date", views_col: str = "views") -> pd.Series:
@@ -97,15 +67,15 @@ def evaluate(actual, predicted, model_name: str = "") -> dict:
         "R2": round(r2, 4),
         "Bias": round(bias, 2),
     }
-    print(
-        f"{model_name:30s} "
-        f"MAE={mae:.0f}  RMSE={rmse:.0f}  MAPE={mape:.2f}%  "
-        f"SMAPE={smape:.2f}%  R2={r2:.3f}"
-    )
+    log.info("%-30s MAE=%.2f  RMSE=%.2f  MAPE=%.2f%%  SMAPE=%.2f%%  R2=%.3f",
+             model_name, mae, rmse, mape, smape, r2)
     return metrics
 
 
-def save_forecast_plot(train, test, forecast, future, model_name: str, filename: str) -> None:
+def save_forecast_plot(
+    train, test, forecast, future, model_name: str, filename: str,
+    conf_lower=None, conf_upper=None,
+) -> None:
     """Save forecast plot in both light and dark themes."""
     for theme, c in THEMES.items():
         fig, ax = plt.subplots(figsize=(14, 5))
@@ -122,6 +92,11 @@ def save_forecast_plot(train, test, forecast, future, model_name: str, filename:
                 test.index[-1] + pd.Timedelta(days=1), periods=len(future), freq="D"
             )
             ax.plot(future_index, future, color=c["future"], linewidth=2, linestyle=":", label="Future")
+            if conf_lower is not None and conf_upper is not None:
+                ax.fill_between(
+                    future_index, conf_lower, conf_upper,
+                    color=c["future"], alpha=0.15, label="95% CI",
+                )
         ax.set_title(f"{model_name} Forecast vs Actual", color=c["text"], fontsize=13, fontweight="bold")
         ax.tick_params(colors=c["muted"])
         for spine in ax.spines.values():
@@ -133,7 +108,7 @@ def save_forecast_plot(train, test, forecast, future, model_name: str, filename:
         path = PLOTS_DIR / f"{stem}_{theme}.{ext}"
         fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
         plt.close(fig)
-        print(f"Saved plot -> {path.name}")
+        log.info("Saved plot -> %s", path.name)
 
 
 def plot_comparison(rows: list[dict]) -> pd.DataFrame:
@@ -162,7 +137,7 @@ def plot_comparison(rows: list[dict]) -> pd.DataFrame:
         path = PLOTS_DIR / f"11_model_comparison_{theme}.png"
         fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
         plt.close(fig)
-        print(f"Saved plot -> {path.name}")
+        log.info("Saved plot -> %s", path.name)
 
     return df
 
@@ -180,8 +155,12 @@ def linear_trend(train, test, forecast_steps: int = 30):
     model = LinearRegression().fit(x_train, train.values)
     forecast = model.predict(x_test)
     future = model.predict(x_future)
-    save_forecast_plot(train, test, forecast, future, "Linear Trend", "07_linear_trend.png")
-    return evaluate(test.values, forecast, "Linear Trend"), forecast.tolist(), future.tolist()
+    # approx CI: ±1.96 * residual std
+    sigma = float(np.std(train.values - model.predict(x_train)))
+    conf_lower = (future - 1.96 * sigma).tolist()
+    conf_upper = (future + 1.96 * sigma).tolist()
+    save_forecast_plot(train, test, forecast, future, "Linear Trend", "07_linear_trend.png", conf_lower, conf_upper)
+    return evaluate(test.values, forecast, "Linear Trend"), forecast.tolist(), future.tolist(), conf_lower, conf_upper
 
 
 def holt_winters(train, test, forecast_steps: int = 30):
@@ -194,17 +173,25 @@ def holt_winters(train, test, forecast_steps: int = 30):
     ).fit(optimized=True)
     forecast = model.forecast(len(test)).values
     future = model.forecast(len(test) + forecast_steps).values[-forecast_steps:]
-    save_forecast_plot(train, test, forecast, future, "Holt-Winters", "08_holt_winters.png")
-    return evaluate(test.values, forecast, "Holt-Winters"), forecast.tolist(), future.tolist()
+    sigma = float(np.std(model.resid))
+    conf_lower = (future - 1.96 * sigma).tolist()
+    conf_upper = (future + 1.96 * sigma).tolist()
+    save_forecast_plot(train, test, forecast, future, "Holt-Winters", "08_holt_winters.png", conf_lower, conf_upper)
+    return evaluate(test.values, forecast, "Holt-Winters"), forecast.tolist(), future.tolist(), conf_lower, conf_upper
 
 
 def fit_arima(train, test, d: int = 1, forecast_steps: int = 30):
     order = (2, d, 2)
     model = ARIMA(train, order=order).fit()
-    forecast = model.forecast(steps=len(test)).values
-    future = model.forecast(steps=len(test) + forecast_steps).values[-forecast_steps:]
-    save_forecast_plot(train, test, forecast, future, f"ARIMA{order}", "09_arima.png")
-    return evaluate(test.values, forecast, f"ARIMA{order}"), forecast.tolist(), future.tolist()
+    fc = model.get_forecast(steps=len(test) + forecast_steps)
+    all_pred = fc.predicted_mean.values
+    forecast = all_pred[:len(test)]
+    future = all_pred[-forecast_steps:]
+    ci = fc.conf_int(alpha=0.05)
+    conf_lower = ci.iloc[-forecast_steps:, 0].values.tolist()
+    conf_upper = ci.iloc[-forecast_steps:, 1].values.tolist()
+    save_forecast_plot(train, test, forecast, future, f"ARIMA{order}", "09_arima.png", conf_lower, conf_upper)
+    return evaluate(test.values, forecast, f"ARIMA{order}"), forecast.tolist(), future.tolist(), conf_lower, conf_upper
 
 
 def fit_sarima(train, test, d: int = 1, forecast_steps: int = 30):
@@ -217,10 +204,15 @@ def fit_sarima(train, test, d: int = 1, forecast_steps: int = 30):
         enforce_stationarity=False,
         enforce_invertibility=False,
     ).fit(disp=False)
-    forecast = model.forecast(steps=len(test)).values
-    future = model.forecast(steps=len(test) + forecast_steps).values[-forecast_steps:]
-    save_forecast_plot(train, test, forecast, future, "SARIMA", "10_sarima.png")
-    return evaluate(test.values, forecast, f"SARIMA{order}x{seasonal_order}"), forecast.tolist(), future.tolist()
+    fc = model.get_forecast(steps=len(test) + forecast_steps)
+    all_pred = fc.predicted_mean.values
+    forecast = all_pred[:len(test)]
+    future = all_pred[-forecast_steps:]
+    ci = fc.conf_int(alpha=0.05)
+    conf_lower = ci.iloc[-forecast_steps:, 0].values.tolist()
+    conf_upper = ci.iloc[-forecast_steps:, 1].values.tolist()
+    save_forecast_plot(train, test, forecast, future, "SARIMA", "10_sarima.png", conf_lower, conf_upper)
+    return evaluate(test.values, forecast, f"SARIMA{order}x{seasonal_order}"), forecast.tolist(), future.tolist(), conf_lower, conf_upper
 
 
 def best_model_key(model_name: str) -> str:
@@ -243,28 +235,30 @@ def run(
     forecast_steps: int = 30,
     use_aggregated: bool = False,
 ):
-    print("\n" + "=" * 60)
-    print("Wikipedia Traffic Forecasting")
-    print(f"Article : {article if not use_aggregated else '(aggregated)'}")
-    print(f"d       : {d}")
-    print("=" * 60 + "\n")
+    log.info("=" * 60)
+    log.info("Wikipedia Traffic Forecasting")
+    log.info("Article : %s", article if not use_aggregated else "(aggregated)")
+    log.info("d       : %d", d)
+    log.info("=" * 60)
 
-    print("[1/4] Loading data from MongoDB...")
+    log.info("[1/4] Loading data from MongoDB...")
     if use_aggregated:
         df = load_aggregated_daily(project=project, access=access).rename({"total_views": "views"})
     else:
         df = load_article(article=article, project=project, access=access)
     df = fill_missing_dates(df)
     series = to_pandas_series(df)
-    print(f"Loaded {len(series)} daily points\n")
+    log.info("Loaded %d daily points", len(series))
 
     train, test = split_series(series, test_days=test_days)
-    print(f"Train: {len(train)} | Test: {len(test)}\n")
+    log.info("Train: %d | Test: %d", len(train), len(test))
 
-    print("[2/4] Running forecasting models...")
+    log.info("[2/4] Running forecasting models...")
     metric_rows = []
     forecasts = {}
     futures = {}
+    conf_lowers = {}
+    conf_uppers = {}
 
     for model_fn in (
         linear_trend,
@@ -272,23 +266,24 @@ def run(
         lambda tr, te, steps: fit_arima(tr, te, d=d, forecast_steps=steps),
         lambda tr, te, steps: fit_sarima(tr, te, d=d, forecast_steps=steps),
     ):
-        metrics, forecast, future = model_fn(train, test, forecast_steps)
+        metrics, forecast, future, conf_lower, conf_upper = model_fn(train, test, forecast_steps)
+        key = best_model_key(metrics["Model"])
         metric_rows.append(metrics)
-        forecasts[best_model_key(metrics["Model"])] = forecast
-        futures[best_model_key(metrics["Model"])] = future
+        forecasts[key] = forecast
+        futures[key] = future
+        conf_lowers[key] = conf_lower
+        conf_uppers[key] = conf_upper
 
-    print("\n[3/4] Comparing model quality...")
+    log.info("[3/4] Comparing model quality...")
     comparison_df = plot_comparison(metric_rows)
-    print(
-        comparison_df[
-            ["Model", "MAE", "MSE", "RMSE", "MAPE (%)", "SMAPE (%)", "WAPE (%)", "R2", "Bias"]
-        ].to_string(index=False)
-    )
+    log.info("\n%s", comparison_df[
+        ["Model", "MAE", "MSE", "RMSE", "MAPE (%)", "SMAPE (%)", "WAPE (%)", "R2", "Bias"]
+    ].to_string(index=False))
 
-    print("\n[4/4] Saving precomputed results...")
+    log.info("[4/4] Saving precomputed results...")
     comparison_path = PRECOMP_DIR / "model_comparison.json"
     comparison_path.write_text(json.dumps(metric_rows, indent=2))
-    print(f"Saved JSON -> {comparison_path.name}")
+    log.info("Saved JSON -> %s", comparison_path.name)
 
     winner = min(metric_rows, key=lambda row: row["MAPE (%)"])
     winner_key = best_model_key(winner["Model"])
@@ -297,6 +292,8 @@ def run(
         "actual": test.values.tolist(),
         "forecast": forecasts[winner_key],
         "future": futures[winner_key],
+        "conf_lower": conf_lowers[winner_key],
+        "conf_upper": conf_uppers[winner_key],
         "best_model": winner["Model"],
         "metrics": metric_rows,
         "test_dates": [str(index.date()) for index in test.index],
@@ -304,10 +301,10 @@ def run(
     safe_name = article.replace("/", "_")
     forecast_path = PRECOMP_DIR / f"{safe_name}_forecast.json"
     forecast_path.write_text(json.dumps(forecast_doc, indent=2))
-    print(f"Saved JSON -> {forecast_path.name}")
+    log.info("Saved JSON -> %s", forecast_path.name)
 
-    print("\nForecasting complete")
-    print(f"Best model: {winner['Model']} (MAPE={winner['MAPE (%)']:.2f}%)")
+    log.info("Forecasting complete")
+    log.info("Best model: %s (MAPE=%.2f%%)", winner["Model"], winner["MAPE (%)"])
     return forecast_doc
 
 
@@ -324,6 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     cli_args = build_parser().parse_args()
     run(
         article=cli_args.article,

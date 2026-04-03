@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Sora:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&family=JetBrains+Mono:wght@100..800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -8,65 +8,67 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
-  font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* ── Chart-only CSS variables (Recharts reads these directly) ── */
 :root {
-  --chart-1: #3B82F6;
-  --chart-2: #8B5CF6;
-  --chart-3: #06B6D4;
+  --chart-1: #1b254b;
+  --chart-2: #b36b00;
+  --chart-3: #4a5568;
   --chart-4: #F97316;
   --chart-5: #10B981;
   --chart-6: #EF4444;
   --chart-7: #84CC16;
   --chart-8: #0EA5E9;
-  --chart-line: #3B82F6;
-  --chart-tick: #6B7280;
+  --chart-line: #1b254b;
+  --chart-tick: #718096;
+  --chart-track: #e5eeff;    /* donut/ring background — matches surface-container */
 }
 [data-theme='dark'] {
-  --chart-1: #60A5FA;
-  --chart-2: #A78BFA;
-  --chart-3: #22D3EE;
+  --chart-1: #bbc4f4;
+  --chart-2: #f6ad55;
+  --chart-3: #94a3b8;
   --chart-4: #FB923C;
   --chart-5: #34D399;
   --chart-6: #F87171;
   --chart-7: #A3E635;
   --chart-8: #38BDF8;
-  --chart-line: #60A5FA;
-  --chart-tick: #9CA3AF;
+  --chart-line: #bbc4f4;
+  --chart-tick: #94a3b8;
+  --chart-track: #1e293b;    /* donut/ring background — matches dark:border-slate-800 */
 }
 
 /* ── Recharts overrides (can't target with Tailwind) ─────────── */
-.recharts-cartesian-grid line { stroke: #E5E7EB; }
+.recharts-cartesian-grid line { stroke: #e5eeff; }
 [data-theme='dark'] .recharts-cartesian-grid line { stroke: #1F2937; }
 
 .recharts-text {
-  fill: #6B7280;
-  font-family: 'Space Mono', ui-monospace, monospace;
+  fill: #76767f;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 10px;
 }
 [data-theme='dark'] .recharts-text { fill: #9CA3AF; }
 
 .recharts-tooltip-wrapper .recharts-default-tooltip {
   background: #ffffff !important;
-  color: #111827 !important;
-  border: 1px solid #E5E7EB !important;
+  color: #0d1c2e !important;
+  border: 1px solid #e5eeff !important;
   border-radius: 8px !important;
-  font-family: 'Space Mono', monospace !important;
+  font-family: 'JetBrains Mono', monospace !important;
   font-size: 11px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+  box-shadow: 0 4px 20px rgba(27,37,75,0.08) !important;
 }
 [data-theme='dark'] .recharts-tooltip-wrapper .recharts-default-tooltip {
-  background: #111827 !important;
-  color: #E5E7EB !important;
-  border-color: #1F2937 !important;
+  background: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
 }
 
 /* ── Custom scrollbar ────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 [data-theme='dark'] ::-webkit-scrollbar-thumb { background: #374151; }

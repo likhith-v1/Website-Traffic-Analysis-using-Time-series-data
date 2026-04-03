@@ -1,53 +1,44 @@
-import { NavLink } from 'react-router-dom'
-import { BarChart2, Search, Trophy, Database, GitCompare, Activity, Sun, Moon, Monitor } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, TrendingUp, FileText, Globe, Activity, Database, ExternalLink } from 'lucide-react'
 import { cx } from '../lib/utils'
 
 const links = [
-  { to: '/',            icon: Activity,   label: 'Overview'    },
-  { to: '/explore',     icon: BarChart2,  label: 'Explore'     },
-  { to: '/search',      icon: Search,     label: 'Search'      },
-  { to: '/leaderboard', icon: Trophy,     label: 'Leaderboard' },
-  { to: '/models',      icon: GitCompare, label: 'Models'      },
-  { to: '/database',    icon: Database,   label: 'Database'    },
+  { to: '/',            icon: LayoutDashboard, label: 'Dashboard'       },
+  { to: '/explore',     icon: TrendingUp,      label: 'Traffic Trends'  },
+  { to: '/search',      icon: FileText,        label: 'Page Insights'   },
+  { to: '/leaderboard', icon: Globe,           label: 'Leaderboard'     },
+  { to: '/models',      icon: Activity,        label: 'System Health'   },
+  { to: '/database',    icon: Database,        label: 'Database'        },
 ]
 
-const themeOptions = [
-  { value: 'auto',  label: 'Auto',  icon: Monitor },
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark',  label: 'Dark',  icon: Moon },
-]
+export default function Sidebar({ isOpen = false, onNavigate = () => {} }) {
+  const navigate = useNavigate()
 
-export default function Sidebar({
-  isOpen = false,
-  onNavigate = () => {},
-  themeMode = 'auto',
-  onThemeModeChange = () => {},
-}) {
   return (
     <aside className={cx(
-      'fixed left-0 top-0 z-20 flex h-screen w-64 flex-col',
-      'border-r border-gray-200 bg-gray-50',
-      'dark:border-gray-800 dark:bg-gray-925',
+      'fixed left-0 top-0 z-50 flex h-screen w-64 flex-col',
+      'bg-surface-container-low dark:bg-slate-900',
+      'py-6 px-4',
       'transition-transform duration-200 ease-in-out',
       isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
     )}>
       {/* Brand */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-200 dark:border-gray-800">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
-          <Activity size={16} className="text-blue-600 dark:text-blue-400" />
+      <div className="mb-10 px-2 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center flex-shrink-0 shadow-[0_4px_14px_rgba(27,37,75,0.25)]">
+          <Activity size={20} className="text-white" />
         </div>
         <div>
-          <div className="font-display text-sm font-semibold text-gray-900 dark:text-gray-50">
+          <h1 className="text-xl font-bold tracking-tight text-primary-container dark:text-white font-display">
             WikiTraffic
-          </div>
-          <div className="font-mono text-[10px] text-gray-400 dark:text-gray-500">
-            Time Series Analysis
-          </div>
+          </h1>
+          <p className="text-[10px] uppercase tracking-widest text-secondary dark:text-secondary-fixed-dim font-bold font-mono">
+            Traffic Analytics
+          </p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-0.5">
+      <nav className="flex-1 space-y-1">
         {links.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -55,22 +46,22 @@ export default function Sidebar({
             end={to === '/'}
             onClick={onNavigate}
             className={({ isActive }) => cx(
-              'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
-              'font-body',
+              'flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all font-body',
               isActive
-                ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
-                : 'text-gray-700 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-50',
+                ? 'bg-white dark:bg-slate-800 text-primary-container dark:text-white font-bold shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50',
             )}
           >
             {({ isActive }) => (
               <>
                 <Icon
-                  size={16}
+                  size={18}
                   className={cx(
                     'shrink-0',
-                    isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-500',
+                    isActive
+                      ? 'text-primary-container dark:text-white'
+                      : 'text-slate-400 dark:text-slate-500',
                   )}
-                  strokeWidth={isActive ? 2 : 1.5}
                 />
                 {label}
               </>
@@ -80,34 +71,22 @@ export default function Sidebar({
       </nav>
 
       {/* Footer */}
-      <div className="px-3 pb-4 pt-3 border-t border-gray-200 dark:border-gray-800">
-        {/* Theme switcher */}
-        <div className="grid grid-cols-3 gap-1.5 mb-3" aria-label="Theme mode">
-          {themeOptions.map(({ value, label, icon: Icon }) => {
-            const active = themeMode === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onThemeModeChange(value)}
-                aria-pressed={active}
-                className={cx(
-                  'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-mono transition-all',
-                  active
-                    ? 'bg-white shadow-sm ring-1 ring-gray-200 text-blue-600 dark:bg-gray-900 dark:ring-gray-800 dark:text-blue-400'
-                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
-                )}
-              >
-                <Icon size={11} />
-                {label}
-              </button>
-            )
-          })}
-        </div>
-
-        <p className="font-mono text-[9px] uppercase tracking-widest text-gray-400 dark:text-gray-600 text-center">
-          Wikipedia · 2015–2016
-        </p>
+      <div className="pt-6 border-t border-slate-200/50 dark:border-slate-700/50 space-y-1">
+        <button
+          onClick={() => { navigate('/models'); onNavigate() }}
+          className="w-full bg-primary-container hover:opacity-90 text-white py-3 rounded-lg font-bold text-sm mb-4 transition-all active:scale-95"
+        >
+          Run Pipeline
+        </button>
+        <a
+          href="http://localhost:8000/docs"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-3 px-4 py-2 text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-lg transition-colors text-sm"
+        >
+          <ExternalLink size={16} className="shrink-0" />
+          API Docs
+        </a>
       </div>
     </aside>
   )
