@@ -8,9 +8,12 @@ differencing order that the forecasting step can reuse.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import warnings
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 import matplotlib
 import matplotlib.dates as mdates
@@ -33,44 +36,7 @@ PRECOMP_DIR.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT))
 
 from data.data_loader_mongo import fill_missing_dates, load_aggregated_daily, load_article
-
-# ---------------------------------------------------------------------------
-# Theme colour palettes — kept in sync with frontend CSS variables
-# ---------------------------------------------------------------------------
-THEMES: dict[str, dict] = {
-    "dark": {
-        "fig_bg":    "#0f172a",
-        "ax_bg":     "#111827",
-        "text":      "#e5e7eb",
-        "muted":     "#94a3b8",
-        "grid":      "#1f2937",
-        "spine":     "#1f2937",
-        "line1":     "#818cf8",   # indigo — matches --accent dark
-        "line2":     "#22d3ee",   # cyan
-        "line3":     "#34d399",   # emerald
-        "line4":     "#c084fc",   # violet
-        "scatter":   "#818cf8",
-        "palette":   ["#818cf8", "#38bdf8", "#c084fc", "#fb923c", "#34d399", "#f472b6"],
-        "legend_bg": "#1e2433",
-        "semi_avg":  "#f0f0f0",
-    },
-    "light": {
-        "fig_bg":    "#f7f8fa",
-        "ax_bg":     "#ffffff",
-        "text":      "#111827",
-        "muted":     "#6b7280",
-        "grid":      "#e5e7eb",
-        "spine":     "#d1d5db",
-        "line1":     "#4338ca",   # indigo — matches --accent light
-        "line2":     "#0891b2",   # cyan
-        "line3":     "#059669",   # emerald
-        "line4":     "#7c3aed",   # violet
-        "scatter":   "#4338ca",
-        "palette":   ["#4338ca", "#0891b2", "#7c3aed", "#ea580c", "#059669", "#e11d48"],
-        "legend_bg": "#f0f2f6",
-        "semi_avg":  "#374151",
-    },
-}
+from src.plot_themes import THEMES
 
 
 def to_pandas_series(df, date_col: str = "date", views_col: str = "views") -> pd.Series:
@@ -85,7 +51,7 @@ def save_figure(fig: plt.Figure, filename: str, theme: str = "dark") -> None:
     path = PLOTS_DIR / f"{stem}_{theme}.{ext}"
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
-    print(f"Saved plot -> {path.name}")
+    log.info("Saved plot -> %s", path.name)
 
 
 def _style_ax(ax, c: dict) -> None:
@@ -144,10 +110,10 @@ def plot_moving_averages(series: pd.Series, windows: tuple[int, ...] = (7, 30, 9
 
 def decompose(series: pd.Series, period: int = 7):
     """Run STL decomposition and save themed plots."""
-    result = STL(series.ffill(), period=period, robust=True).fit()
+    result = STL(series.ffill(limit=7), period=period, robust=True).fit()
 
-    stl_colors_dark  = ["#818cf8", "#22d3ee", "#34d399", "#c084fc"]
-    stl_colors_light = ["#4338ca", "#0891b2", "#059669", "#7c3aed"]
+    stl_colors_dark  = ["#bbc4f4", "#f6ad55", "#94a3b8", "#fb923c"]
+    stl_colors_light = ["#1b254b", "#b36b00", "#4a5568", "#F97316"]
 
     for theme, c in THEMES.items():
         stl_colors = stl_colors_dark if theme == "dark" else stl_colors_light
@@ -181,7 +147,7 @@ def adf_test(series: pd.Series, label: str = "Series") -> dict:
         "Crits": result[4],
     }
     status = "stationary" if response["Stationary"] else "non-stationary"
-    print(f"ADF [{label}] p={response['p-value']} -> {status}")
+    log.info("ADF [%s] p=%.4f -> %s", label, response["p-value"], status)
     return response
 
 
@@ -194,7 +160,7 @@ def kpss_test(series: pd.Series, label: str = "Series") -> dict:
         "Stationary": result[1] > 0.05,
     }
     status = "stationary" if response["Stationary"] else "non-stationary"
-    print(f"KPSS [{label}] p={response['p-value']} -> {status}")
+    log.info("KPSS [%s] p=%.4f -> %s", label, response["p-value"], status)
     return response
 
 
@@ -205,7 +171,7 @@ def make_stationary(series: pd.Series) -> tuple[pd.Series, int]:
     while adfuller(stationary_series.dropna())[1] > 0.05 and differencing_order < 3:
         stationary_series = stationary_series.diff()
         differencing_order += 1
-    print(f"Suggested differencing order: d={differencing_order}")
+    log.info("Suggested differencing order: d=%d", differencing_order)
     return stationary_series, differencing_order
 
 
@@ -285,22 +251,22 @@ def run(
     access: str = "all-access",
     use_aggregated: bool = False,
 ):
-    print("\n" + "=" * 60)
-    print("Wikipedia Traffic Analysis")
-    print(f"Article : {article if not use_aggregated else '(aggregated all pages)'}")
-    print(f"Project : {project}")
-    print("=" * 60 + "\n")
+    log.info("=" * 60)
+    log.info("Wikipedia Traffic Analysis")
+    log.info("Article : %s", article if not use_aggregated else "(aggregated all pages)")
+    log.info("Project : %s", project)
+    log.info("=" * 60)
 
-    print("[1/3] Loading data from MongoDB...")
+    log.info("[1/3] Loading data from MongoDB...")
     if use_aggregated:
         df = load_aggregated_daily(project=project, access=access).rename({"total_views": "views"})
     else:
         df = load_article(article=article, project=project, access=access)
     df = fill_missing_dates(df)
     series = to_pandas_series(df)
-    print(f"Loaded {len(series)} daily points\n")
+    log.info("Loaded %d daily points", len(series))
 
-    print("[2/3] Running analysis plots and tests...")
+    log.info("[2/3] Running analysis plots and tests...")
     plot_time_series(series, f"Wikipedia Daily Views - {article}")
     plot_moving_averages(series)
     decomposition = decompose(series)
@@ -322,9 +288,9 @@ def run(
         "trend_strength": float(np.nanstd(decomposition.trend)),
     }
 
-    print("\n[3/3] Analysis complete")
-    print(f"Suggested differencing order: d={differencing_order}")
-    print(f"Plots saved to: {PLOTS_DIR}")
+    log.info("[3/3] Analysis complete")
+    log.info("Suggested differencing order: d=%d", differencing_order)
+    log.info("Plots saved to: %s", PLOTS_DIR)
     return series, differencing_order, summary
 
 

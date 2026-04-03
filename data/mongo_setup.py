@@ -40,6 +40,48 @@ def main():
           ("date", ASCENDING), ("views", DESCENDING)], "project_access_date_views"),
     ]
 
+    # Build article_search collection (one doc per unique article+project, used for fast text search)
+    search_col = db["article_search"]
+    existing = search_col.estimated_document_count()
+    if existing == 0:
+        print("\nBuilding article_search collection (one-time, ~30 s)...")
+        pipeline = [
+            {"$group": {
+                "_id": {"article": "$article", "project": "$project"},
+                "total_views": {"$sum": "$views"},
+            }},
+            {"$project": {
+                "_id": 0,
+                "article": "$_id.article",
+                "project": "$_id.project",
+                "total_views": 1,
+                "article_words": {
+                    "$replaceAll": {"input": "$_id.article", "find": "_", "replacement": " "}
+                },
+            }},
+            {"$out": "article_search"},
+        ]
+        col.aggregate(pipeline, allowDiskUse=True)
+        print(f"  ✓ article_search ({search_col.estimated_document_count():,} docs)")
+    else:
+        print(f"\narticle_search already built ({existing:,} docs), skipping.")
+
+    print("Creating indexes on article_search...")
+    try:
+        search_col.create_index(
+            [("article_words", "text")], name="article_words_text", default_language="none"
+        )
+        print("  ✓ article_words_text")
+    except OperationFailure as e:
+        print(f"  ✗ article_words_text: {e}")
+    try:
+        search_col.create_index(
+            [("project", ASCENDING), ("total_views", DESCENDING)], name="project_views"
+        )
+        print("  ✓ project_views")
+    except OperationFailure as e:
+        print(f"  ✗ project_views: {e}")
+
     print("Creating indexes...")
     for keys, name in indexes:
         try:

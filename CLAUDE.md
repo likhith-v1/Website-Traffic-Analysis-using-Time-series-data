@@ -57,7 +57,7 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 - **Holt-Winters Exponential Smoothing** (additive trend + additive seasonal, period=7) → `08_holt_winters.png`
 - **ARIMA(2, d, 2)** → `09_arima.png`
 - **SARIMA(1, d, 1)×(1, 1, 0, 7)** → `10_sarima.png`
-- `d` is auto-detected via ADF test (make_stationary)
+- `d` is auto-detected via ADF test (`make_stationary`); can be overridden with `--d`
 - Forecast horizon: **30 days** ahead (configurable via `--steps`)
 - Test set: **60 days** held out (configurable via `--test-days`)
 
@@ -83,37 +83,46 @@ The chosen domain is **Wikipedia page traffic analysis** — a real-world websit
 | `src/analysis.py`           | Time series analysis — plots + stationarity tests |
 | `src/forecasting.py`        | Model training, evaluation, future forecast       |
 | `backend/main.py`           | FastAPI server (API + SSE pipeline streaming)     |
-| `data/data_loader_mongo.py` | MongoDB data access (Polars-based)                |
+| `data/data_loader_mongo.py` | MongoDB data access (Polars-based) + article blocklist |
 | `data/mongo_setup.py`       | Index definitions                                 |
 | `frontend/src/`             | React + Vite dashboard                            |
 
 ### Frontend Pages
 
-| Route          | Page        | Description                                              |
-| -------------- | ----------- | -------------------------------------------------------- |
-| `/`            | Overview    | Traffic summary, language breakdown, access type         |
-| `/explore`     | Explore     | Interactive time-series chart with brush zoom            |
-| `/search`      | Search      | MongoDB article search (partial/fuzzy, space=underscore) |
-| `/leaderboard` | Leaderboard | Top N articles by total views                            |
-| `/models`      | Models      | Pipeline runner + model comparison + analysis plots      |
-| `/database`    | Database    | MongoDB schema, indexes, collection stats                |
+| Route          | Page          | Description                                              |
+| -------------- | ------------- | -------------------------------------------------------- |
+| `/`            | Overview      | Traffic summary, language breakdown, access type         |
+| `/explore`     | Explore       | Leaderboard podium + paginated table + article chart     |
+| `/search`      | Page Insights | Deep-dive search: metrics, platform split, YoY growth    |
+| `/leaderboard` | Leaderboard   | Top N articles by total views with bar chart             |
+| `/models`      | System Health | Pipeline runner + model comparison + analysis plots      |
+| `/database`    | Database      | MongoDB schema, indexes, collection stats                |
+
+### Frontend Components
+
+| Component                          | Role                                        |
+| ---------------------------------- | ------------------------------------------- |
+| `components/Sidebar.jsx`           | Fixed left nav with brand + links           |
+| `components/PageHeader.jsx`        | Reusable eyebrow + title + subtitle header  |
+| `components/SurfaceCard.jsx`       | Reusable card with optional accent border   |
+| `components/StatCard.jsx`          | Stat display card with accent variant       |
 
 ### Output Files
 
 ```
 outputs/
 ├── plots/
-│   ├── 01_time_plot.png
-│   ├── 02_moving_averages.png
-│   ├── 03_stl_decomposition.png
-│   ├── 04_acf_pacf.png
-│   ├── 05_seasonal_subseries.png
-│   ├── 06_lag_scatter.png
-│   ├── 07_linear_trend.png
-│   ├── 08_holt_winters.png
-│   ├── 09_arima.png
-│   ├── 10_sarima.png
-│   └── 11_model_comparison.png
+│   ├── 01_time_plot_{light|dark}.png
+│   ├── 02_moving_averages_{light|dark}.png
+│   ├── 03_stl_decomposition_{light|dark}.png
+│   ├── 04_acf_pacf_{light|dark}.png
+│   ├── 05_seasonal_subseries_{light|dark}.png
+│   ├── 06_lag_scatter_{light|dark}.png
+│   ├── 07_linear_trend_{light|dark}.png
+│   ├── 08_holt_winters_{light|dark}.png
+│   ├── 09_arima_{light|dark}.png
+│   ├── 10_sarima_{light|dark}.png
+│   └── 11_model_comparison_{light|dark}.png
 └── precomputed/
     ├── model_comparison.json
     ├── analysis_results.json       ← ADF/KPSS results, d, trend_strength
@@ -125,7 +134,7 @@ outputs/
 | Endpoint                             | Description                                     |
 | ------------------------------------ | ----------------------------------------------- |
 | `GET /stats`                         | Collection stats                                |
-| `GET /top-articles`                  | Top N articles                                  |
+| `GET /top-articles`                  | Top N articles (filtered — see blocklist)       |
 | `GET /article`                       | Single article timeseries                       |
 | `GET /search?q=&project=`            | Fuzzy article search (space matches underscore) |
 | `GET /aggregated-daily`              | Aggregated daily traffic                        |
@@ -154,6 +163,9 @@ python main.py --article Main_Page
 # Skip analysis phase (use cached d)
 python main.py --article Donald_Trump --skip-analysis --d 0
 
+# Override d but still run analysis
+python main.py --article Main_Page --d 1
+
 # Aggregate all articles
 python main.py --aggregated
 ```
@@ -162,11 +174,79 @@ python main.py --aggregated
 
 ## Key Design Decisions
 
-- **Search fix:** `re.escape(query)` then replace spaces with `[_ ]` so "donald trump" matches "donald_trump" in MongoDB
+### Theme & Styling
+
 - **Theme system:** `applyTheme()` in `App.jsx` sets `document.documentElement.dataset.theme = 'dark'|'light'`; Tailwind's `darkMode: ["selector", "[data-theme='dark']"]` activates all `dark:` utilities; persisted in `localStorage`
-- **Pipeline streaming:** FastAPI SSE endpoint spawns `python main.py` as a subprocess and streams stdout line-by-line to the frontend via `EventSource`
-- **Analysis results:** Saved to `outputs/precomputed/analysis_results.json` after each full pipeline run (not saved when `--skip-analysis` is used)
-- **Fonts:** Bricolage Grotesque (display, `font-display`), Space Mono (mono, `font-mono`), Sora (body, `font-body`) — configured in `tailwind.config.js`
+- **Fonts:** Manrope (display/body/headline/label, `font-display` / `font-body`), JetBrains Mono (mono, `font-mono`) — loaded from Google Fonts, configured in `tailwind.config.js`
 - **Styling:** Fully Tailwind CSS (no custom CSS classes). Chart colors use CSS variables (`--chart-1` through `--chart-8`, `--chart-line`, `--chart-tick`) defined in `index.css` for Recharts compatibility
 - **Utility:** `cx()` helper from `src/lib/utils.js` (clsx + tailwind-merge) used in all components for conditional class composition
-- **Design tokens:** Gray-neutral palette with blue accent — sidebar `bg-gray-50 dark:bg-gray-925`, cards `bg-white dark:bg-gray-950`, borders `border-gray-200 dark:border-gray-800`
+
+### Design Palette (Material Design 3 tokens in `tailwind.config.js`)
+
+The UI uses a four-color palette applied consistently across all pages, components, and matplotlib plots:
+
+| Role | Token | Light value | Dark value |
+| ---- | ----- | ----------- | ---------- |
+| **Primary** | `primary-container` | `#1b254b` | — (use `primary-fixed-dim` `#bbc4f4`) |
+| **Secondary** | `secondary` / `secondary-container` | `#b36b00` / `#f6ad55` | `#f6ad55` |
+| **Tertiary** | `tertiary` | `#4a5568` | `#94a3b8` |
+| **Neutral** | `outline` | `#718096` | `#94a3b8` |
+| **Surface** | `surface` | `#f8f9ff` | `slate-950 #020617` |
+| **Cards** | `surface-container-lowest` | `#ffffff` | `slate-900 #0f172a` |
+
+- Active nav, buttons, avatars → `bg-primary-container` (`#1b254b`)
+- Accent text, sparklines, chart-2 → `text-secondary` / `bg-secondary-container` (`#f6ad55`)
+- Muted text, ticks → `text-on-surface-variant` / `text-outline` (`#718096`)
+- All pages wrap content in `bg-surface dark:bg-slate-950`
+- Cards use `bg-surface-container-lowest dark:bg-slate-900` with `border-surface-container dark:border-slate-800`
+- **Do not use raw `gray-*`, `blue-*`, or `indigo-*` Tailwind classes** — always use the design token names above
+
+### Matplotlib Plot Themes
+
+Both `src/analysis.py` and `src/forecasting.py` generate plots in **light** and **dark** variants using the same palette:
+
+| Key | Light | Dark |
+| --- | ----- | ---- |
+| `fig_bg` | `#f8f9ff` | `#020617` |
+| `ax_bg` | `#ffffff` | `#0f172a` |
+| `line1` / actual | `#1b254b` | `#bbc4f4` |
+| `line2` / forecast | `#b36b00` | `#f6ad55` |
+| `line3` / future | `#4a5568` | `#94a3b8` |
+| `muted` / ticks | `#718096` | `#94a3b8` |
+
+Plot filenames follow `{NN}_{name}_{light|dark}.png`. The frontend reads the correct variant based on the current theme.
+
+### Article Blocklist (`data/data_loader_mongo.py`)
+
+All article queries (`load_top_articles`, `search_articles`) filter out two categories at the **MongoDB level** (via `$not + $regex`) with a Polars-side safety net:
+
+1. **Wikipedia namespace pages** — `Special:`, `Wikipedia:`, `User:`, `File:`, `Help:`, `Category:`, `Talk:`, `Template:`, `Portal:`, `Draft:`, `MediaWiki:`, `Module:`, `Book:`, `WP:`
+2. **Adult/pornography content** — common adult site names and explicit terms
+
+Constants: `_NS_PREFIXES`, `_NS_REGEX`, `_ADULT_TERMS`, `_ADULT_RE`  
+Helper functions: `_article_filter_clause()` (MongoDB dict), `_filter_articles_df()` (Polars filter)
+
+### Pipeline SSE & `d` Propagation
+
+- FastAPI `/run-pipeline` spawns `python main.py` as a subprocess and streams stdout via SSE
+- When `skip_analysis=False`: `d` is auto-detected by ADF test in `src/analysis.py`; the `d` query param is ignored
+- When `skip_analysis=True`: the frontend sends `d = analysis?.d ?? 1` (the previously computed value from `analysis_results.json`), which is forwarded as `--d` to `main.py`
+- **Do not hardcode `d: 1`** in `streamPipeline()` calls — always read from `analysis` state
+
+### Search
+
+- `re.escape(query)` then replace spaces with `[_ ]` so "donald trump" matches "donald_trump" in MongoDB
+- Minimum query length: 2 characters (enforced in FastAPI `Query(min_length=2)`)
+
+---
+
+## Known Bugs Fixed
+
+| Location | Bug | Fix applied |
+| -------- | --- | ----------- |
+| `Models.jsx:163` | `d: 1` hardcoded in `streamPipeline` call | Changed to `d: analysis?.d ?? 1` |
+| `Explore.jsx:143` | `useEffect` for article chart missing `project, access` deps | Added both to dependency array |
+| `PageInsights.jsx:133` | `Math.min(...positives)` crashes with empty array → `Infinity` → `indexOf = -1` | Guard with `positives.length > 0` check |
+| `Overview.jsx:88-94` | `filter(Boolean)` dropped months with no data, breaking bar chart alignment | Pre-initialize all 12 months; use `activeBars` for `avgDaily` |
+| `DatabasePage.jsx:49` | `getAccessBreakdown()` called but result never stored | Removed call and import |
+| `data_loader_mongo.py:57` | `_filter_articles_df` mixed Polars regex + Python `map_elements` lambda (slow) | Unified into single `str.contains(f"(?i)(?:{blocked})")` |

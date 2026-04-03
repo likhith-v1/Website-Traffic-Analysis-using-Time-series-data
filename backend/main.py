@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pymongo.errors import PyMongoError
 
 from data.data_loader_mongo import (
+    _get_client,
+    DB_NAME,
     load_access_breakdown,
     load_aggregated_daily,
     load_article,
@@ -32,23 +35,19 @@ app = FastAPI(
     version="1.0.0",
 )
 
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# -- Helpers ------------------------------------------------------------------
 
 def frame_to_records(frame) -> list[dict]:
     return frame.to_dicts()
@@ -60,9 +59,7 @@ def load_json_file(path: Path):
     return json.loads(path.read_text())
 
 
-# ---------------------------------------------------------------------------
-# Core routes
-# ---------------------------------------------------------------------------
+# -- Routes -------------------------------------------------------------------
 
 @app.get("/")
 def root() -> dict:
@@ -70,8 +67,12 @@ def root() -> dict:
 
 
 @app.get("/health")
-def health_check() -> dict:
-    return {"status": "ok"}
+def health_check():
+    try:
+        _get_client()[DB_NAME].command("ping")
+        return {"status": "ok", "mongo": "connected"}
+    except Exception as exc:
+        return JSONResponse({"status": "degraded", "mongo": str(exc)}, status_code=503)
 
 
 @app.get("/stats")
@@ -167,15 +168,17 @@ def get_analysis():
 
 @app.get("/plots/{filename}")
 def get_plot(filename: str):
-    path = PLOTS_DIR / filename
+    # Strip any path components to prevent directory traversal
+    safe = Path(filename).name
+    if not safe.endswith(".png"):
+        raise HTTPException(status_code=400, detail="Only .png files are served here")
+    path = PLOTS_DIR / safe
     if not path.exists():
         raise HTTPException(status_code=404, detail="Plot not found")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
 
-# ---------------------------------------------------------------------------
-# Pipeline SSE endpoint
-# ---------------------------------------------------------------------------
+# -- Pipeline SSE -------------------------------------------------------------
 
 @app.get("/run-pipeline")
 async def run_pipeline(

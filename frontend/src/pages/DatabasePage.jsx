@@ -1,22 +1,20 @@
 import { useEffect, useState } from 'react'
-import { getStats, getProjectBreakdown, getAccessBreakdown } from '../api/client'
+import { getStats, getProjectBreakdown } from '../api/client'
 import { Database, HardDrive, Layers, Globe } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import SurfaceCard from '../components/SurfaceCard'
-import { cx } from '../lib/utils'
+import { cx, fmt } from '../lib/utils'
 
-const fmt = n =>
-  n >= 1e9 ? (n / 1e9).toFixed(2) + 'B'
-  : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
-  : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K'
-  : String(n)
+const Skeleton = ({ className }) => (
+  <div className={cx('animate-pulse rounded bg-surface-container dark:bg-slate-700', className)} />
+)
 
 const Row = ({ label, value, accent }) => (
-  <div className="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-900 last:border-0">
-    <span className="font-body text-sm text-gray-500 dark:text-gray-400">{label}</span>
+  <div className="flex items-center justify-between py-3 border-b border-surface-container-low dark:border-slate-900 last:border-0">
+    <span className="font-body text-sm text-on-surface-variant dark:text-slate-400">{label}</span>
     <span className={cx(
       'font-mono text-sm',
-      accent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-50',
+      accent ? 'text-primary-container dark:text-primary-fixed-dim' : 'text-primary dark:text-white',
     )}>
       {value}
     </span>
@@ -31,7 +29,13 @@ const INDEXES = [
   { name: 'date',                      desc: 'Date-only range scans' },
   { name: 'views_desc',                desc: 'Sort by views descending (leaderboard)' },
   { name: 'project_access_date_views', desc: 'Dashboard compound filter + sort' },
+  { name: 'article_text',              desc: 'Text index on article name (pageviews)' },
   { name: '_id_',                      desc: 'Default MongoDB _id index' },
+]
+
+const SEARCH_INDEXES = [
+  { name: 'article_words_text', desc: 'Text search on article_search collection' },
+  { name: 'project_views',      desc: 'Filter by project, sort by views' },
 ]
 
 const CHART_COLORS = [
@@ -44,18 +48,19 @@ export default function DatabasePage() {
   const [projects, setProjects] = useState([])
 
   useEffect(() => {
-    getStats().then(setStats)
-    getProjectBreakdown().then(d => setProjects(d.filter(p => p.project !== 'unknown')))
-    getAccessBreakdown()
+    getStats().then(setStats).catch(() => {})
+    getProjectBreakdown()
+      .then(d => setProjects(d.filter(p => p.project)))
+      .catch(() => {})
   }, [])
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-6 lg:p-8 bg-surface dark:bg-slate-950 min-h-full">
       <PageHeader
         eyebrow="Infrastructure"
         title="Database"
         subtitle="A more readable snapshot of the MongoDB collection, indexing strategy, and language distribution behind the dashboard."
-        actions={<Database size={18} className="text-blue-600 dark:text-blue-400" />}
+        actions={<Database size={18} className="text-primary-container dark:text-primary-fixed-dim" />}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -63,8 +68,8 @@ export default function DatabasePage() {
         {/* Collection Stats */}
         <SurfaceCard accent="highlight">
           <div className="flex items-center gap-2 mb-5">
-            <HardDrive size={15} className="text-blue-600 dark:text-blue-400" />
-            <span className="font-display text-[15px] font-semibold text-gray-900 dark:text-gray-50">
+            <HardDrive size={15} className="text-primary-container dark:text-primary-fixed-dim" />
+            <span className="font-display text-[15px] font-semibold text-primary dark:text-white">
               Collection Stats
             </span>
           </div>
@@ -79,15 +84,22 @@ export default function DatabasePage() {
               <Row label="Collection"        value="pageviews" />
             </>
           ) : (
-            <div className="font-mono text-xs text-gray-400 dark:text-gray-500">Loading…</div>
+            <div className="space-y-3.5 pt-1">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between py-2.5 border-b border-surface-container-low dark:border-slate-900 last:border-0">
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-3.5 w-20" />
+                </div>
+              ))}
+            </div>
           )}
         </SurfaceCard>
 
         {/* Indexes */}
         <SurfaceCard>
           <div className="flex items-center gap-2 mb-5">
-            <Layers size={15} className="text-cyan-600 dark:text-cyan-400" />
-            <span className="font-display text-[15px] font-semibold text-gray-900 dark:text-gray-50">
+            <Layers size={15} className="text-tertiary dark:text-tertiary-fixed-dim" />
+            <span className="font-display text-[15px] font-semibold text-primary dark:text-white">
               Indexes ({INDEXES.length})
             </span>
           </div>
@@ -96,11 +108,11 @@ export default function DatabasePage() {
               key={i}
               className={cx(
                 'py-2.5',
-                i < INDEXES.length - 1 && 'border-b border-gray-100 dark:border-gray-900',
+                i < INDEXES.length - 1 && 'border-b border-surface-container-low dark:border-slate-900',
               )}
             >
-              <div className="font-mono text-xs text-blue-600 dark:text-blue-400">{idx.name}</div>
-              <div className="font-body text-xs text-gray-500 dark:text-gray-400 mt-0.5">{idx.desc}</div>
+              <div className="font-mono text-xs text-primary-container dark:text-primary-fixed-dim">{idx.name}</div>
+              <div className="font-body text-xs text-on-surface-variant dark:text-slate-400 mt-0.5">{idx.desc}</div>
             </div>
           ))}
         </SurfaceCard>
@@ -108,25 +120,25 @@ export default function DatabasePage() {
         {/* Views by Language */}
         <SurfaceCard>
           <div className="flex items-center gap-2 mb-5">
-            <Globe size={15} className="text-emerald-600 dark:text-emerald-400" />
-            <span className="font-display text-[15px] font-semibold text-gray-900 dark:text-gray-50">
+            <Globe size={15} className="text-secondary dark:text-secondary-fixed-dim" />
+            <span className="font-display text-[15px] font-semibold text-primary dark:text-white">
               Views by Language
             </span>
           </div>
-          {projects.length > 0 ? projects.map((p, i) => {
+          {projects.length > 0 ? projects.map((p, i) => { // eslint-disable-line no-shadow
             const total = projects.reduce((s, x) => s + x.total_views, 0)
             const pct = ((p.total_views / total) * 100).toFixed(1)
             return (
               <div key={i} className="mb-3.5">
                 <div className="flex justify-between mb-1.5">
-                  <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-mono text-xs text-on-surface dark:text-slate-300">
                     {p.project?.replace('.wikipedia.org', '') || 'unknown'}
                   </span>
-                  <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                  <span className="font-mono text-xs text-on-surface-variant dark:text-slate-400">
                     {fmt(p.total_views)} · {pct}%
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-800">
+                <div className="h-1.5 rounded-full bg-surface-container dark:bg-slate-800">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${pct}%`, background: CHART_COLORS[i % CHART_COLORS.length] }}
@@ -135,8 +147,42 @@ export default function DatabasePage() {
               </div>
             )
           }) : (
-            <div className="font-mono text-xs text-gray-400 dark:text-gray-500">Loading…</div>
+            <div className="space-y-3.5 pt-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="mb-3.5">
+                  <div className="flex justify-between mb-1.5">
+                    <Skeleton className="h-3 w-10" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-container dark:bg-slate-800">
+                    <Skeleton className="h-full rounded-full" style={{ width: `${30 + (i * 13) % 55}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
+        </SurfaceCard>
+
+        {/* article_search indexes */}
+        <SurfaceCard>
+          <div className="flex items-center gap-2 mb-5">
+            <Layers size={15} className="text-secondary dark:text-secondary-fixed-dim" />
+            <span className="font-display text-[15px] font-semibold text-primary dark:text-white">
+              Search Index (article_search)
+            </span>
+          </div>
+          {SEARCH_INDEXES.map((idx, i) => (
+            <div
+              key={i}
+              className={cx(
+                'py-2.5',
+                i < SEARCH_INDEXES.length - 1 && 'border-b border-surface-container-low dark:border-slate-900',
+              )}
+            >
+              <div className="font-mono text-xs text-primary-container dark:text-primary-fixed-dim">{idx.name}</div>
+              <div className="font-body text-xs text-on-surface-variant dark:text-slate-400 mt-0.5">{idx.desc}</div>
+            </div>
+          ))}
         </SurfaceCard>
 
         {/* Document Schema */}
@@ -144,7 +190,7 @@ export default function DatabasePage() {
           title="Document Schema"
           subtitle="Representative shape of a pageview document stored in MongoDB."
         >
-          <pre className="rounded-md bg-gray-50 p-4 font-mono text-xs text-gray-700 overflow-auto leading-relaxed dark:bg-gray-900/50 dark:text-gray-300">{`{
+          <pre className="rounded-lg bg-surface-container-low p-4 font-mono text-xs text-on-surface overflow-auto leading-relaxed dark:bg-slate-900/50 dark:text-slate-300">{`{
   "article":     "Main_Page",
   "project":     "en.wikipedia.org",
   "access":      "all-access",
