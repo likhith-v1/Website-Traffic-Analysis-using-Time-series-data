@@ -191,32 +191,53 @@ def search_articles(
     project: str = "en.wikipedia.org",
     limit: int = 20,
 ) -> pl.DataFrame:
-    """Search articles using the pre-built article_search collection.
-
-    article_search has one doc per unique (article, project) pair with a
-    'article_words' field (underscores → spaces) and a text index on it.
-    This makes 'trump' match 'Donald_Trump', 'Albert' match 'Albert_Einstein', etc.
-    """
-    # Replace underscores with spaces so multi-word article names tokenise correctly.
-    text_query = query.replace("_", " ")
-
-    search_col = _get_client()[DB_NAME][SEARCH_COL_NAME]
+    """Search articles with partial matching, preferring article_search when available."""
+    client = _get_client()
+    db = client[DB_NAME]
+    col = get_collection()
     blocked_pattern = "|".join([_NS_REGEX] + _ADULT_TERMS)
 
-    cursor = (
-        search_col
-        .find(
-            {
-                "$text": {"$search": text_query},
-                "project": project,
-                "article": {"$not": {"$regex": blocked_pattern, "$options": "i"}},
-            },
-            {"_id": 0, "article": 1, "total_views": 1, "project": 1},
-        )
-        .sort("total_views", -1)
-        .limit(limit)
-    )
-    docs = list(cursor)
+    normalized_query = query.strip().replace("_", " ")
+    if not normalized_query:
+        return pl.DataFrame(schema={"article": pl.Utf8, "total_views": pl.Int64, "project": pl.Utf8})
+
+    word_pattern = re.escape(normalized_query)
+    article_pattern = word_pattern.replace(r"\ ", r"[_ ]")
+
+    docs: list[dict]
+    if SEARCH_COL_NAME in db.list_collection_names():
+        try:
+            search_col = db[SEARCH_COL_NAME]
+            docs = list(
+                search_col
+                .find(
+                    {
+                        "project": project,
+                        "article_words": {"$regex": word_pattern, "$options": "i"},
+                        "article": {"$not": {"$regex": blocked_pattern, "$options": "i"}},
+                    },
+                    {"_id": 0, "article": 1, "total_views": 1, "project": 1},
+                )
+                .sort("total_views", -1)
+                .limit(limit)
+            )
+        except Exception:
+            docs = []
+    else:
+        docs = []
+
+    if not docs:
+        pipeline = [
+            {"$match": {"project": project, "article": {"$regex": article_pattern, "$options": "i"}}},
+            {"$match": _article_filter_clause()},
+            {"$group": {"_id": "$article", "total_views": {"$sum": "$views"}, "project": {"$first": "$project"}}},
+            {"$sort": {"total_views": -1}},
+            {"$limit": limit},
+        ]
+        docs = list(col.aggregate(pipeline, allowDiskUse=True))
+        if docs:
+            docs = pl.DataFrame(docs).rename({"_id": "article"}).to_dicts()
+
     if not docs:
         return pl.DataFrame(schema={"article": pl.Utf8, "total_views": pl.Int64, "project": pl.Utf8})
     df = pl.DataFrame(docs)

@@ -124,6 +124,10 @@ export default function PageInsights() {
     setDataLoading(false)
   }, [project])
 
+  useEffect(() => {
+    if (article) loadArticle(article)
+  }, [project])
+
   /* explicit search — independent abort ref, shows errors */
   const handleSearch = useCallback(async () => {
     if (query.length < 2) return

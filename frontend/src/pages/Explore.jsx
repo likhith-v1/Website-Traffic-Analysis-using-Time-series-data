@@ -150,17 +150,13 @@ export default function Explore() {
   useEffect(() => {
     if (!compareQuery.trim() || !selected) { setCompareData([]); return }
     setCompareLoading(true)
-    getTopArticles(50, project, access)
-      .then(list => {
-        const match = list.find(a => a.article.toLowerCase() === compareQuery.toLowerCase().replace(/ /g, '_'))
-        if (!match) { setCompareData([]); setCompareLoading(false); return }
-        return getArticle(match.article, project, access).then(rows => {
-          const byDate = Object.fromEntries(rows.map(r => [r.date, r.views]))
-          setCompareData(byDate)
-          setCompareLoading(false)
-        })
+    getArticle(compareQuery.trim().replace(/ /g, '_'), project, access)
+      .then(rows => {
+        const byDate = Object.fromEntries(rows.map(r => [r.date, r.views]))
+        setCompareData(byDate)
       })
       .catch(() => { setCompareData([]); setCompareLoading(false) })
+      .finally(() => setCompareLoading(false))
   }, [compareQuery, project, access, selected])
 
   const top3         = articles.slice(0, 3)
