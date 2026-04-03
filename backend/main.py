@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,7 +75,8 @@ def health_check():
         _get_client()[DB_NAME].command("ping")
         return {"status": "ok", "mongo": "connected"}
     except Exception as exc:
-        return JSONResponse({"status": "degraded", "mongo": str(exc)}, status_code=503)
+        log.warning("MongoDB health check failed: %s", exc)
+        return JSONResponse({"status": "degraded", "mongo": "unavailable"}, status_code=503)
 
 
 @app.get("/stats")

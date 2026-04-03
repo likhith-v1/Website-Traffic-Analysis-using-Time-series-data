@@ -67,7 +67,7 @@ def evaluate(actual, predicted, model_name: str = "") -> dict:
         "R2": round(r2, 4),
         "Bias": round(bias, 2),
     }
-    log.info("%-30s MAE=%d  RMSE=%d  MAPE=%.2f%%  SMAPE=%.2f%%  R2=%.3f",
+    log.info("%-30s MAE=%.2f  RMSE=%.2f  MAPE=%.2f%%  SMAPE=%.2f%%  R2=%.3f",
              model_name, mae, rmse, mape, smape, r2)
     return metrics
 
@@ -321,6 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     cli_args = build_parser().parse_args()
     run(
         article=cli_args.article,

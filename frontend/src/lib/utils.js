@@ -27,7 +27,17 @@ export const PROJECTS = [
 
 export const exportCSV = (rows, filename) => {
   if (!rows?.length) return
-  const csv = [Object.keys(rows[0]).join(','), ...rows.map(r => Object.values(r).join(','))].join('\n')
+  const escapeCell = v => {
+    const s = String(v ?? '')
+    // Prefix formula-injection characters to prevent spreadsheet execution
+    const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+    // RFC4180: quote fields containing commas, quotes, or newlines
+    return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
+  }
+  const csv = [
+    Object.keys(rows[0]).join(','),
+    ...rows.map(r => Object.values(r).map(escapeCell).join(',')),
+  ].join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)

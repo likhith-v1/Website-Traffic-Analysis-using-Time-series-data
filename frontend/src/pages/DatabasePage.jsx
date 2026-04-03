@@ -125,9 +125,10 @@ export default function DatabasePage() {
               Views by Language
             </span>
           </div>
-          {projects.length > 0 ? projects.map((p, i) => { // eslint-disable-line no-shadow
+          {projects.length > 0 ? (() => { // eslint-disable-line no-shadow
             const total = projects.reduce((s, x) => s + x.total_views, 0)
-            const pct = ((p.total_views / total) * 100).toFixed(1)
+            return projects.map((p, i) => {
+            const pct = (total > 0 ? (p.total_views / total) * 100 : 0).toFixed(1)
             return (
               <div key={i} className="mb-3.5">
                 <div className="flex justify-between mb-1.5">
@@ -146,7 +147,7 @@ export default function DatabasePage() {
                 </div>
               </div>
             )
-          }) : (
+          })})() : (
             <div className="space-y-3.5 pt-1">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="mb-3.5">

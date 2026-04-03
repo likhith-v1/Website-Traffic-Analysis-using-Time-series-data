@@ -65,7 +65,7 @@ export default function Leaderboard() {
         </div>
         {data.length > 0 && (
           <button
-            onClick={() => exportCSV(data.map(r => ({ rank: data.indexOf(r) + 1, article: r.article, total_views: r.total_views })), `leaderboard_${project.split('.')[0]}_top${n}.csv`)}
+            onClick={() => exportCSV(data.map((r, i) => ({ rank: i + 1, article: r.article, total_views: r.total_views })), `leaderboard_${project.split('.')[0]}_top${n}.csv`)}
             className="ml-auto flex items-center gap-1.5 rounded-lg border border-surface-container px-3 py-2 font-mono text-[11px] text-on-surface-variant hover:text-primary hover:border-outline dark:border-slate-800 dark:text-slate-400 transition-colors"
           >
             <Download size={12} /> Export CSV

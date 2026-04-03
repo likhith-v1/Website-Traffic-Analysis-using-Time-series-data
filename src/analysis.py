@@ -304,6 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     cli_args = build_parser().parse_args()
     run(
         article=cli_args.article,

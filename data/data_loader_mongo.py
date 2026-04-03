@@ -185,6 +185,18 @@ def load_access_breakdown() -> pl.DataFrame:
 
 SEARCH_COL_NAME = "article_search"
 
+# Cached boolean: None = not yet checked, True/False = result of list_collection_names()
+_search_col_exists: bool | None = None
+
+
+def _has_search_collection() -> bool:
+    """Return True if the article_search collection exists; result is cached after first check."""
+    global _search_col_exists
+    if _search_col_exists is None:
+        db = _get_client()[DB_NAME]
+        _search_col_exists = SEARCH_COL_NAME in db.list_collection_names()
+    return _search_col_exists
+
 
 def search_articles(
     query: str,
@@ -205,7 +217,7 @@ def search_articles(
     article_pattern = word_pattern.replace(r"\ ", r"[_ ]")
 
     docs: list[dict]
-    if SEARCH_COL_NAME in db.list_collection_names():
+    if _has_search_collection():
         try:
             search_col = db[SEARCH_COL_NAME]
             docs = list(

@@ -146,17 +146,35 @@ export default function Explore() {
       .finally(() => setChartLoading(false))
   }, [selected, project, access])
 
-  // Fetch compare article data (merge by date with primary data)
+  // Fetch compare article data (merge by date with primary data) — debounced 300 ms
   useEffect(() => {
-    if (!compareQuery.trim() || !selected) { setCompareData([]); return }
+    const normalizedQuery = compareQuery.trim().replace(/ /g, '_')
+    if (!normalizedQuery || !selected) { setCompareData([]); setCompareLoading(false); return }
+
+    let cancelled = false
     setCompareLoading(true)
-    getArticle(compareQuery.trim().replace(/ /g, '_'), project, access)
-      .then(rows => {
-        const byDate = Object.fromEntries(rows.map(r => [r.date, r.views]))
-        setCompareData(byDate)
-      })
-      .catch(() => { setCompareData([]); setCompareLoading(false) })
-      .finally(() => setCompareLoading(false))
+
+    const timeoutId = setTimeout(() => {
+      getArticle(normalizedQuery, project, access)
+        .then(rows => {
+          if (cancelled) return
+          const byDate = Object.fromEntries(rows.map(r => [r.date, r.views]))
+          setCompareData(byDate)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setCompareData([])
+        })
+        .finally(() => {
+          if (cancelled) return
+          setCompareLoading(false)
+        })
+    }, 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
   }, [compareQuery, project, access, selected])
 
   const top3         = articles.slice(0, 3)

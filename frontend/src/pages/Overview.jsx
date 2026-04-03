@@ -11,6 +11,7 @@ const DONUT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var
 function buildDonutSegments(projects) {
   if (!projects.length) return []
   const total = projects.reduce((s, p) => s + p.total_views, 0)
+  if (total === 0) return []
   const top2 = projects.slice(0, 2)
   const othersTotal = projects.slice(2).reduce((s, p) => s + p.total_views, 0)
   const items = [
@@ -34,6 +35,7 @@ const ACCESS_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)']
 export default function Overview() {
   const [stats,       setStats]       = useState(null)
   const [projects,    setProjects]    = useState([])
+  const [allProjects, setAllProjects] = useState([])
   const [access,      setAccess]      = useState([])
   const [barData,     setBarData]     = useState([])
   const [topArticles, setTopArticles] = useState([])
@@ -50,7 +52,9 @@ export default function Overview() {
       if (statsRes.status === 'fulfilled') setStats(statsRes.value)
 
       if (projRes.status === 'fulfilled') {
-        setProjects(projRes.value.filter(p => p.project && p.project !== 'unknown').slice(0, 8))
+        const filtered = projRes.value.filter(p => p.project && p.project !== 'unknown')
+        setAllProjects(filtered)
+        setProjects(filtered.slice(0, 8))
       }
 
       if (accRes.status === 'fulfilled') {
@@ -84,7 +88,7 @@ export default function Overview() {
   }, [])
 
   // Derived stats
-  const totalViews   = projects.reduce((s, p) => s + p.total_views, 0)
+  const totalViews   = allProjects.reduce((s, p) => s + p.total_views, 0)
   const totalMonthly = barData.reduce((s, d) => s + (d.y2015 || 0) + (d.y2016 || 0), 0)
   const activeBars   = barData.filter(d => (d.y2015 || 0) + (d.y2016 || 0) > 0).length
   const avgDaily     = activeBars > 0 ? Math.round(totalMonthly / (activeBars * 30)) : 0
